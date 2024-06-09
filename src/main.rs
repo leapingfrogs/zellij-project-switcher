@@ -1,7 +1,7 @@
-use ansi_term::{Style, Colour::Fixed};
+use ansi_term::{Colour::Fixed, Style};
 use zellij_tile::prelude::*;
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Default)]
 struct State {
@@ -19,10 +19,13 @@ impl ZellijPlugin for State {
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
         // we need the RunCommands permission to run "cargo test" in a floating window
-        request_permission(&[PermissionType::ReadApplicationState, PermissionType::RunCommands]);
+        request_permission(&[
+            PermissionType::ReadApplicationState,
+            PermissionType::RunCommands,
+        ]);
         subscribe(&[EventType::ModeUpdate, EventType::TabUpdate, EventType::Key]);
     }
-    fn pipe (&mut self, pipe_message: PipeMessage) -> bool {
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         eprintln!("pipe_message: {:?}", pipe_message);
         true
     }
@@ -42,11 +45,14 @@ impl ZellijPlugin for State {
             Event::Key(key) => {
                 if let Key::Char('n') = key {
                     self.test_runs += 1;
-                    open_command_pane_floating(CommandToRun {
-                        path: "cargo".into(),
-                        args: vec!["test".to_owned()],
-                        cwd: None,
-                    }, None);
+                    open_command_pane_floating(
+                        CommandToRun {
+                            path: "cargo".into(),
+                            args: vec!["test".to_owned()],
+                            cwd: None,
+                        },
+                        None,
+                    );
                 }
             }
             _ => (),
@@ -58,9 +64,19 @@ impl ZellijPlugin for State {
         let colored_rows = color_bold(CYAN, &rows.to_string());
         let colored_cols = color_bold(CYAN, &cols.to_string());
         println!("");
-        println!("I have {} rows and {} columns", colored_rows, colored_cols);
+        println!(
+            "I quite like {} rows and {} columns",
+            colored_rows, colored_cols
+        );
         println!("");
-        println!("{} {:#?}", color_bold(GREEN, "I was started with the following user configuration:"), self.userspace_configuration);
+        println!(
+            "{} {:#?}",
+            color_bold(
+                GREEN,
+                "I was started with the following user configuration:"
+            ),
+            self.userspace_configuration
+        );
         println!("");
         println!("{}", color_bold(GREEN, "Modes:"));
         for (mode, count) in &self.mode_log {

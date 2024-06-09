@@ -2116,6 +2116,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-switcher-plugin"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "chrono",
+ "zellij-tile",
+]
+
+[[package]]
 name = "prost"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2315,15 +2324,6 @@ dependencies = [
  "byteorder",
  "rmp",
  "serde",
-]
-
-[[package]]
-name = "rust-plugin-example"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "chrono",
- "zellij-tile",
 ]
 
 [[package]]
