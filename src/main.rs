@@ -8,6 +8,7 @@ use std::{collections::BTreeMap, process};
 #[derive(Default)]
 struct State {
     userspace_configuration: BTreeMap<String, String>,
+    projects: BTreeMap<String, String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -50,6 +51,7 @@ impl ZellijWorker<'_> for ProjectWorker {
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
+        self.projects = BTreeMap::new();
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
         // we need the ChangeApplicationState permission to open sessions
@@ -63,6 +65,9 @@ impl ZellijPlugin for State {
             EventType::CustomMessage,
             EventType::RunCommandResult,
         ]);
+
+        // perform an initial load of projects...
+        refresh_projects();
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         eprintln!("pipe_message: {:?}", pipe_message);
@@ -73,7 +78,7 @@ impl ZellijPlugin for State {
         match event {
             Event::CustomMessage(message, payload) => {
                 eprintln!("custom_message: {:?} payload: {:?}", message, payload);
-                should_render = true;
+                should_render = false;
             }
             Event::Key(key) => {
                 if let Key::Char('N') = key {
@@ -91,63 +96,33 @@ impl ZellijPlugin for State {
                     });
                 }
                 if let Key::Char('g') = key {
-                    let mut options = BTreeMap::new();
-                    options.insert("sample".into(), "42".into());
-                    run_command(
-                        &[
-                            "fd",
-                            "-Htd",
-                            "^\\.git$",
-                            "/Users/idavies",
-                            "/Users/idavies/Documents",
-                            "/Users/idavies/Documents/GitHub",
-                            "/Users/idavies/Documents/GitHub/Github",
-                            "--max-depth=2",
-                        ],
-                        options,
-                    );
+                    refresh_projects();
                 }
                 should_render = true;
             }
-            Event::RunCommandResult(Some(status), stdin, stdout, data) => {
-                eprintln!(
-                    "Command Result: status: {:?} in: {:?} out: {:?} data: {:?}",
-                    status,
-                    match std::str::from_utf8(&stdin) {
-                        Ok(val) => {
-                            split_lines(val).into()
-                        }
-                        Err(_) => {
-                            "None".to_string()
-                        }
-                    },
-                    match std::str::from_utf8(&stdout) {
-                        Ok(val) => val,
-                        Err(_) => "No Projects found",
-                    },
-                    data
-                );
+            Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
                 if status == 0 {
-                    let result = match std::str::from_utf8(&stdin) {
+                    let mut v = match std::str::from_utf8(&stdin) {
                         Ok(val) => do_lines(val),
-                        Err(_) => {
-                            vec![]
-                        }
+
+                        Err(_) => BTreeMap::new(),
                     };
-                    match result.first() {
-                        Some(l) => {
-                            eprintln!("Would open: {}", l);
-                            match l.split_once("::") {
-                                Some((name, cwd)) => switch_session_with_layout(
-                                    Some(name.into()),
-                                    LayoutInfo::BuiltIn("default".into()),
-                                    Some(cwd.into()),
-                                ),
-                                None => {}
-                            }
-                        }
-                        None => {}
-                    }
+                    self.projects.append(&mut v);
+
+                    // match result.first() {
+                    //     Some(l) => {
+                    //         eprintln!("Would open: {}", l);
+                    //         match l.split_once("::") {
+                    //             Some((name, cwd)) => switch_session_with_layout(
+                    //                 Some(name.into()),
+                    //                 LayoutInfo::BuiltIn("default".into()),
+                    //                 Some(cwd.into()),
+                    //             ),
+                    //             None => {}
+                    //         }
+                    //     }
+                    //     None => {}
+                    // }
                 }
                 should_render = true;
             }
@@ -168,6 +143,7 @@ impl ZellijPlugin for State {
             self.userspace_configuration
         );
         println!("");
+        self.projects.keys().for_each(|k| println!("{}", k));
     }
 }
 
@@ -184,24 +160,35 @@ fn color_bold(color: u8, text: &str) -> String {
     format!("{}", Style::new().fg(Fixed(color)).bold().paint(text))
 }
 
-fn do_lines(lines: &str) -> Vec<String> {
-    return lines.lines().map(|l| split(l)).collect();
+fn do_lines(lines: &str) -> BTreeMap<String, String> {
+    return lines.lines().fold(BTreeMap::new(), |a, l| split(a, l));
 }
 
-fn split_lines(lines: &str) -> String {
-    return lines
-        .lines()
-        .fold("".to_string(), |acc, l| {
-            format!("{},{}", acc, split(l).to_owned())
-        })
-        .into();
+fn refresh_projects() {
+    let options = BTreeMap::new();
+    run_command(
+        &[
+            "fd",
+            "-Htd",
+            "^\\.git$",
+            "/Users/idavies",
+            "/Users/idavies/Documents",
+            "/Users/idavies/Documents/GitHub",
+            "/Users/idavies/Documents/GitHub/Github",
+            "--max-depth=2",
+        ],
+        options,
+    );
 }
 
-fn split(line: &str) -> String {
+fn split(mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
     let re = Regex::new(r"^(?<path>.*\/(?<name>[^/]+))\/.git\/$").unwrap();
 
     match re.captures(line) {
-        Some(caps) => format!("{}::{}", &caps["name"], &caps["path"]),
-        None => "default".into(),
+        Some(caps) => {
+            acc.insert(caps["name"].into(), caps["path"].into());
+            acc
+        }
+        None => acc,
     }
 }

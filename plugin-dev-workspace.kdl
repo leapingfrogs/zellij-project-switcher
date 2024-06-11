@@ -5,16 +5,16 @@ layout {
     pane split_direction="vertical" {
         pane edit="src/main.rs"
         pane {
-            pane edit="Cargo.toml"
-            pane stacked=true {
-                pane size="10%" command="bash" name="COMPILE AND RELOAD PLUGIN" {
-                    // args "-c" "cargo build && zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/project-switcher-plugin.wasm"
-                    // if you have "watchexec" installed, you can comment the above line and uncomment the below one to build + reload the plugin on fs changes
-                    args "-c" "watchexec 'cargo build && zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/project-switcher-plugin.wasm'"
-                }
-                pane expanded=true {
-                    plugin location="file:target/wasm32-wasi/debug/project-switcher-plugin.wasm"
-                }
+            pane command="bash" name="COMPILE AND RELOAD PLUGIN" {
+                // args "-c" "cargo build && zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/project-switcher-plugin.wasm"
+                // if you have "watchexec" installed, you can comment the above line and uncomment the below one to build + reload the plugin on fs changes
+                args "-c" "watchexec 'cargo build && zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/project-switcher-plugin.wasm'"
+            }
+            pane {
+                plugin location="file:target/wasm32-wasi/debug/project-switcher-plugin.wasm"
+            }
+            pane command="bash" name="Monitor Log" {
+                args "-c" "tail -f /private/var/folders/6d/bz8r35p93v1_k9fs5q97gbvr0000gn/T/zellij-501/zellij-log/zellij.log"
             }
         }
     }
