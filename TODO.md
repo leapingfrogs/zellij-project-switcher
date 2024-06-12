@@ -5,3 +5,4 @@
 - [x] Allow selecting a project name in the UI
 - [ ] Allow filtering the project names by typing in the UI
 - [ ] Allow specifying confituration or the project query filter
+- [ ] Cleanup UX

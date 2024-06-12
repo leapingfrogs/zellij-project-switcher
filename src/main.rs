@@ -71,10 +71,8 @@ impl ZellijPlugin for State {
             EventType::Key,
             EventType::CustomMessage,
             EventType::RunCommandResult,
+            EventType::PermissionRequestResult,
         ]);
-
-        // perform an initial load of projects...
-        refresh_projects();
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         eprintln!("pipe_message: {:?}", pipe_message);
@@ -83,6 +81,12 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = true;
         match event {
+            Event::PermissionRequestResult(status) => {
+                if status == PermissionStatus::Granted {
+                    // perform an initial load of projects...
+                    refresh_projects();
+                }
+            }
             Event::CustomMessage(message, payload) => {
                 eprintln!("custom_message: {:?} payload: {:?}", message, payload);
                 should_render = false;
@@ -251,6 +255,6 @@ fn split(mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, Stri
 
 fn default_projects() -> BTreeMap<String, String> {
     let mut projects = BTreeMap::new();
-    projects.insert("default".into(), "~".into());
+    projects.insert("default".into(), "/Users/idavies".into());
     return projects;
 }
