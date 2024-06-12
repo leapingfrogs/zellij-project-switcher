@@ -9,6 +9,9 @@ use std::{collections::BTreeMap, process};
 struct State {
     userspace_configuration: BTreeMap<String, String>,
     projects: BTreeMap<String, String>,
+    top_idx: usize,
+    sel_idx: usize,
+    selected: String,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -51,7 +54,11 @@ impl ZellijWorker<'_> for ProjectWorker {
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
-        self.projects = BTreeMap::new();
+        self.projects = default_projects();
+        self.top_idx = 0;
+        self.sel_idx = 0;
+        self.selected = "default".to_string();
+
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
         // we need the ChangeApplicationState permission to open sessions
@@ -98,6 +105,53 @@ impl ZellijPlugin for State {
                 if let Key::Char('g') = key {
                     refresh_projects();
                 }
+                if let Key::Char('\n') = key {
+                    eprintln!("Switch Project!");
+                    match self.projects.get(&self.selected) {
+                        Some(cwd) => switch_session_with_layout(
+                            Some(self.selected.as_str()),
+                            LayoutInfo::BuiltIn("default".into()),
+                            Some(cwd.into()),
+                        ),
+                        None => (),
+                    }
+                }
+                if let Key::Down = key {
+                    eprintln!("Down");
+                    let new_idx = self.sel_idx + 1;
+                    match self.projects.keys().nth(new_idx) {
+                        Some(k) => {
+                            self.selected = k.clone();
+                            self.sel_idx = new_idx;
+                            if self.sel_idx > 5 {
+                                self.top_idx = self.sel_idx - 5;
+                            } else {
+                                self.top_idx = 0;
+                            }
+                            ();
+                        }
+                        None => (),
+                    }
+                }
+                if let Key::Up = key {
+                    eprintln!("Up");
+                    if self.sel_idx > 0 {
+                        let new_idx = self.sel_idx - 1;
+                        match self.projects.keys().nth(new_idx) {
+                            Some(k) => {
+                                self.selected = k.clone();
+                                self.sel_idx = new_idx;
+                                if self.sel_idx > 5 {
+                                    self.top_idx = self.sel_idx - 5;
+                                } else {
+                                    self.top_idx = 0;
+                                }
+                                ();
+                            }
+                            None => (),
+                        }
+                    }
+                }
                 should_render = true;
             }
             Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
@@ -105,24 +159,9 @@ impl ZellijPlugin for State {
                     let mut v = match std::str::from_utf8(&stdin) {
                         Ok(val) => do_lines(val),
 
-                        Err(_) => BTreeMap::new(),
+                        Err(_) => default_projects(),
                     };
                     self.projects.append(&mut v);
-
-                    // match result.first() {
-                    //     Some(l) => {
-                    //         eprintln!("Would open: {}", l);
-                    //         match l.split_once("::") {
-                    //             Some((name, cwd)) => switch_session_with_layout(
-                    //                 Some(name.into()),
-                    //                 LayoutInfo::BuiltIn("default".into()),
-                    //                 Some(cwd.into()),
-                    //             ),
-                    //             None => {}
-                    //         }
-                    //     }
-                    //     None => {}
-                    // }
                 }
                 should_render = true;
             }
@@ -143,7 +182,23 @@ impl ZellijPlugin for State {
             self.userspace_configuration
         );
         println!("");
-        self.projects.keys().for_each(|k| println!("{}", k));
+        println!(" Open {}?", self.selected);
+        eprintln!(
+            "Render {:?} projects... (sel: {:?}, top: {:?})",
+            self.projects.len(),
+            self.sel_idx,
+            self.top_idx
+        );
+        for (i, p) in self.projects.keys().enumerate() {
+            if i == self.sel_idx {
+                println!("{}", color_bold(GREEN, &format!("> {}", p).to_string()));
+            } else {
+                // we'll show 5 items at a time
+                if i >= self.top_idx && i < self.top_idx + 5 {
+                    println!("{}", color_bold(WHITE, &format!("  {}", p).to_string()));
+                }
+            }
+        }
     }
 }
 
@@ -161,11 +216,12 @@ fn color_bold(color: u8, text: &str) -> String {
 }
 
 fn do_lines(lines: &str) -> BTreeMap<String, String> {
-    return lines.lines().fold(BTreeMap::new(), |a, l| split(a, l));
+    return lines.lines().fold(default_projects(), |a, l| split(a, l));
 }
 
 fn refresh_projects() {
-    let options = BTreeMap::new();
+    let mut options = BTreeMap::new();
+    options.insert("command".to_string(), "refresh_projects".to_string());
     run_command(
         &[
             "fd",
@@ -191,4 +247,10 @@ fn split(mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, Stri
         }
         None => acc,
     }
+}
+
+fn default_projects() -> BTreeMap<String, String> {
+    let mut projects = BTreeMap::new();
+    projects.insert("default".into(), "~".into());
+    return projects;
 }
