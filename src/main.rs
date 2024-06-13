@@ -1,17 +1,133 @@
 use ansi_term::{Colour::Fixed, Style};
 use zellij_tile::prelude::*;
 
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, process};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    process,
+};
 
 #[derive(Default)]
 struct State {
     userspace_configuration: BTreeMap<String, String>,
     projects: BTreeMap<String, String>,
+    filtered_projects: BTreeSet<String>,
     top_idx: usize,
     sel_idx: usize,
     selected: String,
+    search_term: String,
+}
+
+impl State {
+    pub fn handle_key(&mut self, key: Key) -> bool {
+        if let Key::Char('g') = key {
+            refresh_projects();
+            return false;
+        }
+        if let Key::Char('\n') = key {
+            eprintln!("Switch Project!");
+            match self.projects.get(&self.selected) {
+                Some(cwd) => switch_session_with_layout(
+                    Some(self.selected.as_str()),
+                    LayoutInfo::BuiltIn("default".into()),
+                    Some(cwd.into()),
+                ),
+                None => (),
+            }
+            return true;
+        }
+        if let Key::Backspace = key {
+            self.handle_backspace();
+            return true;
+        }
+        if let Key::Down = key {
+            eprintln!("Down");
+            self.update_selected(1, 0);
+            return true;
+        }
+        if let Key::Up = key {
+            eprintln!("Up");
+            self.update_selected(0, 1);
+            return true;
+        }
+        if let Key::Char(char) = key {
+            self.update_search_term(char);
+            return true;
+        }
+
+        return false;
+    }
+
+    pub fn update_search_term(&mut self, character: char) {
+        self.search_term.push(character);
+        self.update_filtered();
+        self.update_selected(0, 0);
+    }
+
+    pub fn handle_backspace(&mut self) {
+        if self.search_term.is_empty() {
+            self.update_filtered();
+            self.update_selected(0, 0);
+        } else {
+            self.search_term.pop();
+            self.update_filtered();
+            self.update_selected(0, 0);
+        }
+    }
+
+    pub fn update_selected(&mut self, down: usize, up: usize) {
+        let mut new_idx = if self.sel_idx >= self.filtered_projects.len() {
+            self.filtered_projects.len() - 1
+        } else {
+            self.sel_idx
+        };
+        if new_idx > 0 {
+            new_idx -= up
+        };
+        if new_idx < self.filtered_projects.len() {
+            new_idx += down
+        };
+        self.sel_idx = new_idx;
+        if self.sel_idx >= 5 {
+            self.top_idx = self.sel_idx - 5;
+        } else {
+            self.top_idx = 0;
+        }
+        match self.filtered_projects.iter().nth(self.sel_idx) {
+            Some(k) => {
+                self.selected = k.clone();
+                ();
+            }
+            None => (),
+        }
+    }
+
+    pub fn update_filtered(&mut self) {
+        let regex_str = self
+            .search_term
+            .chars()
+            .enumerate()
+            .fold(String::new(), |acc, (i, c)| {
+                if i != 0 {
+                    format!("{}.*?{}", acc, c)
+                } else {
+                    format!("{}{}", acc, c)
+                }
+            });
+        let regex = RegexBuilder::new(&regex_str)
+            .case_insensitive(true)
+            .build()
+            .unwrap();
+        self.filtered_projects =
+            self.projects
+                .keys()
+                .filter(|p| regex.is_match(p))
+                .fold(BTreeSet::new(), |mut c, v| {
+                    c.insert(v.to_owned());
+                    c
+                });
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -55,9 +171,14 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
         self.projects = default_projects();
+        self.filtered_projects = self.projects.keys().fold(BTreeSet::new(), |mut c, v| {
+            c.insert(v.to_owned());
+            c
+        });
         self.top_idx = 0;
         self.sel_idx = 0;
         self.selected = "default".to_string();
+        self.search_term = "".to_string();
 
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
@@ -79,7 +200,7 @@ impl ZellijPlugin for State {
         true
     }
     fn update(&mut self, event: Event) -> bool {
-        let mut should_render = true;
+        let mut should_render = false;
         match event {
             Event::PermissionRequestResult(status) => {
                 if status == PermissionStatus::Granted {
@@ -92,71 +213,7 @@ impl ZellijPlugin for State {
                 should_render = false;
             }
             Event::Key(key) => {
-                if let Key::Char('N') = key {
-                    switch_session_with_layout(
-                        Some("Downloads".into()),
-                        LayoutInfo::BuiltIn("default".into()),
-                        Some("/Users/idavies/Downloads".into()),
-                    );
-                }
-                if let Key::Char('w') = key {
-                    post_message_to(PluginMessage {
-                        name: String::from("list_projects"),
-                        payload: String::from("sample_payload"),
-                        worker_name: Some(String::from("project")),
-                    });
-                }
-                if let Key::Char('g') = key {
-                    refresh_projects();
-                }
-                if let Key::Char('\n') = key {
-                    eprintln!("Switch Project!");
-                    match self.projects.get(&self.selected) {
-                        Some(cwd) => switch_session_with_layout(
-                            Some(self.selected.as_str()),
-                            LayoutInfo::BuiltIn("default".into()),
-                            Some(cwd.into()),
-                        ),
-                        None => (),
-                    }
-                }
-                if let Key::Down = key {
-                    eprintln!("Down");
-                    let new_idx = self.sel_idx + 1;
-                    match self.projects.keys().nth(new_idx) {
-                        Some(k) => {
-                            self.selected = k.clone();
-                            self.sel_idx = new_idx;
-                            if self.sel_idx > 5 {
-                                self.top_idx = self.sel_idx - 5;
-                            } else {
-                                self.top_idx = 0;
-                            }
-                            ();
-                        }
-                        None => (),
-                    }
-                }
-                if let Key::Up = key {
-                    eprintln!("Up");
-                    if self.sel_idx > 0 {
-                        let new_idx = self.sel_idx - 1;
-                        match self.projects.keys().nth(new_idx) {
-                            Some(k) => {
-                                self.selected = k.clone();
-                                self.sel_idx = new_idx;
-                                if self.sel_idx > 5 {
-                                    self.top_idx = self.sel_idx - 5;
-                                } else {
-                                    self.top_idx = 0;
-                                }
-                                ();
-                            }
-                            None => (),
-                        }
-                    }
-                }
-                should_render = true;
+                should_render = self.handle_key(key);
             }
             Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
                 if status == 0 {
@@ -166,6 +223,8 @@ impl ZellijPlugin for State {
                         Err(_) => default_projects(),
                     };
                     self.projects.append(&mut v);
+                    self.update_filtered();
+                    self.update_selected(0, 0);
                 }
                 should_render = true;
             }
@@ -174,30 +233,24 @@ impl ZellijPlugin for State {
         should_render
     }
 
-    fn render(&mut self, rows: usize, cols: usize) {
-        let colored_rows = color_bold(CYAN, &rows.to_string());
-        let colored_cols = color_bold(CYAN, &cols.to_string());
-        println!("");
-        println!("Size: {} rows and {} columns", colored_rows, colored_cols);
+    fn render(&mut self, _rows: usize, _cols: usize) {
         println!("");
         println!(
-            "{} {:#?}",
-            color_bold(GREEN, "Started with the following user configuration:"),
-            self.userspace_configuration
+            " Open project: [{}]?",
+            color_bold(GREEN, &self.selected.to_string())
         );
         println!("");
-        println!(" Open {}?", self.selected);
         eprintln!(
             "Render {:?} projects... (sel: {:?}, top: {:?})",
             self.projects.len(),
             self.sel_idx,
             self.top_idx
         );
-        for (i, p) in self.projects.keys().enumerate() {
+        for (i, p) in self.filtered_projects.iter().enumerate() {
             if i == self.sel_idx {
                 println!("{}", color_bold(GREEN, &format!("> {}", p).to_string()));
             } else {
-                // we'll show 5 items at a time
+                // we'll show 5 items at a time - adjust for rows
                 if i >= self.top_idx && i < self.top_idx + 5 {
                     println!("{}", color_bold(WHITE, &format!("  {}", p).to_string()));
                 }
