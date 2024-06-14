@@ -3,10 +3,7 @@ use zellij_tile::prelude::*;
 
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    process,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default)]
 struct State {
@@ -23,12 +20,7 @@ struct State {
 
 impl State {
     pub fn refresh_projects(&mut self) {
-        eprintln!(
-            "Into refresh_projects with: {:?}",
-            self.userspace_configuration
-        );
         let get = self.userspace_configuration.get("roots");
-        eprintln!("Got: {:?}", get);
         let mut roots: Vec<&str> = match get {
             Some(r) => r.split(":").collect(),
             None => ["~"].into(),
@@ -168,6 +160,30 @@ impl State {
                     c
                 });
     }
+
+    fn do_lines(&mut self, lines: &str) -> BTreeMap<String, String> {
+        return lines
+            .lines()
+            .fold(self.default_projects(), |a, l| self.split(a, l));
+    }
+
+    fn split(&mut self, mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
+        let re = Regex::new(r"^(?<path>.*\/(?<name>[^/]+))\/.git\/$").unwrap();
+
+        match re.captures(line) {
+            Some(caps) => {
+                acc.insert(caps["name"].into(), caps["path"].into());
+                acc
+            }
+            None => acc,
+        }
+    }
+
+    fn default_projects(&mut self) -> BTreeMap<String, String> {
+        let mut projects = BTreeMap::new();
+        projects.insert("default".into(), "/Users/idavies".into());
+        return projects;
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -175,43 +191,11 @@ pub struct ProjectWorker {}
 
 register_plugin!(State);
 
-register_worker!(ProjectWorker, project_worker, PROJECT_WORKER);
-
-impl ZellijWorker<'_> for ProjectWorker {
-    fn on_message(&mut self, message: String, payload: String) {
-        eprintln!("worker message: {:?} payload: {:?}", message, payload);
-        if message == "list_projects" {
-            let output = process::Command::new("fd")
-                .args([
-                    "-Htd",
-                    "^\\.git$",
-                    "/Users/idavies",
-                    "/Users/idavies/Documents",
-                    "/Users/idavies/Documents/GitHub",
-                    "/Users/idavies/Documents/GitHub/Github",
-                    "--max-depth=2",
-                ])
-                .output()
-                .expect("failed to execute process");
-            let result = match std::str::from_utf8(&output.stdout) {
-                Ok(val) => val,
-                Err(_) => "No Projects found",
-            };
-            eprintln!("Got projects: {}", result);
-            post_message_to_plugin(PluginMessage {
-                name: "projects".into(),
-                payload: result.into(),
-                worker_name: None,
-            })
-        }
-    }
-}
-
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
         eprintln!("Config: {:?}", self.userspace_configuration);
-        self.projects = default_projects();
+        self.projects = self.default_projects();
         self.filtered_projects = self.projects.keys().fold(BTreeSet::new(), |mut c, v| {
             c.insert(v.to_owned());
             c
@@ -261,9 +245,9 @@ impl ZellijPlugin for State {
             Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
                 if status == 0 {
                     let mut v = match std::str::from_utf8(&stdin) {
-                        Ok(val) => do_lines(val),
+                        Ok(val) => self.do_lines(val),
 
-                        Err(_) => default_projects(),
+                        Err(_) => self.default_projects(),
                     };
                     self.projects.append(&mut v);
                     self.update_filtered();
@@ -308,6 +292,7 @@ impl ZellijPlugin for State {
     }
 }
 
+// COLOR Helpers
 pub const CYAN: u8 = 51;
 pub const GRAY_LIGHT: u8 = 238;
 pub const GRAY_DARK: u8 = 245;
@@ -319,26 +304,4 @@ pub const ORANGE: u8 = 166;
 
 fn color_bold(color: u8, text: &str) -> String {
     format!("{}", Style::new().fg(Fixed(color)).bold().paint(text))
-}
-
-fn do_lines(lines: &str) -> BTreeMap<String, String> {
-    return lines.lines().fold(default_projects(), |a, l| split(a, l));
-}
-
-fn split(mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
-    let re = Regex::new(r"^(?<path>.*\/(?<name>[^/]+))\/.git\/$").unwrap();
-
-    match re.captures(line) {
-        Some(caps) => {
-            acc.insert(caps["name"].into(), caps["path"].into());
-            acc
-        }
-        None => acc,
-    }
-}
-
-fn default_projects() -> BTreeMap<String, String> {
-    let mut projects = BTreeMap::new();
-    projects.insert("default".into(), "/Users/idavies".into());
-    return projects;
 }
