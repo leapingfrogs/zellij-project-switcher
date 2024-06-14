@@ -11,7 +11,9 @@ layout {
                 args "-c" "watchexec 'cargo build && zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/project-switcher-plugin.wasm'"
             }
             pane {
-                plugin location="file:target/wasm32-wasi/debug/project-switcher-plugin.wasm"
+                plugin location="file:target/wasm32-wasi/debug/project-switcher-plugin.wasm" {
+                    roots "~/Documents/GitHub"
+                }
             }
             pane command="bash" name="Monitor Log" {
                 args "-c" "tail -f /private/var/folders/6d/bz8r35p93v1_k9fs5q97gbvr0000gn/T/zellij-501/zellij-log/zellij.log"

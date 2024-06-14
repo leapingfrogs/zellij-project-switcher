@@ -17,14 +17,50 @@ struct State {
     sel_idx: usize,
     selected: String,
     search_term: String,
+    rows: usize,
+    cols: usize,
 }
 
 impl State {
+    pub fn refresh_projects(&mut self) {
+        eprintln!(
+            "Into refresh_projects with: {:?}",
+            self.userspace_configuration
+        );
+        let get = self.userspace_configuration.get("roots");
+        eprintln!("Got: {:?}", get);
+        let mut roots: Vec<&str> = match get {
+            Some(r) => r.split(":").collect(),
+            None => ["~"].into(),
+        };
+        eprintln!("Initial Roots: {:?}", roots);
+
+        roots.insert(0, "^\\.git$");
+        roots.insert(0, "--max-depth=2");
+        roots.insert(0, "-Htd");
+        roots.insert(0, "fd");
+        eprintln!("Roots: {:?}", roots);
+
+        let mut options = BTreeMap::new();
+        options.insert("command".to_string(), "refresh_projects".to_string());
+
+        run_command(
+            &roots,
+            // &[
+            //     "fd",
+            //     "-Htd",
+            //     "^\\.git$",
+            //     "/Users/idavies",
+            //     "/Users/idavies/Documents",
+            //     "/Users/idavies/Documents/GitHub",
+            //     "/Users/idavies/Documents/GitHub/Github",
+            //     "--max-depth=2",
+            // ],
+            options,
+        );
+    }
+
     pub fn handle_key(&mut self, key: Key) -> bool {
-        if let Key::Char('g') = key {
-            refresh_projects();
-            return false;
-        }
         if let Key::Char('\n') = key {
             eprintln!("Switch Project!");
             match self.projects.get(&self.selected) {
@@ -39,6 +75,10 @@ impl State {
         }
         if let Key::Backspace = key {
             self.handle_backspace();
+            return true;
+        }
+        if let Key::Esc = key {
+            close_self();
             return true;
         }
         if let Key::Down = key {
@@ -78,7 +118,11 @@ impl State {
 
     pub fn update_selected(&mut self, down: usize, up: usize) {
         let mut new_idx = if self.sel_idx >= self.filtered_projects.len() {
-            self.filtered_projects.len() - 1
+            if self.filtered_projects.len() > 0 {
+                self.filtered_projects.len() - 1
+            } else {
+                0
+            }
         } else {
             self.sel_idx
         };
@@ -89,8 +133,8 @@ impl State {
             new_idx += down
         };
         self.sel_idx = new_idx;
-        if self.sel_idx >= 5 {
-            self.top_idx = self.sel_idx - 5;
+        if self.sel_idx >= self.rows {
+            self.top_idx = self.sel_idx - self.rows;
         } else {
             self.top_idx = 0;
         }
@@ -170,6 +214,7 @@ impl ZellijWorker<'_> for ProjectWorker {
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
+        eprintln!("Config: {:?}", self.userspace_configuration);
         self.projects = default_projects();
         self.filtered_projects = self.projects.keys().fold(BTreeSet::new(), |mut c, v| {
             c.insert(v.to_owned());
@@ -179,6 +224,8 @@ impl ZellijPlugin for State {
         self.sel_idx = 0;
         self.selected = "default".to_string();
         self.search_term = "".to_string();
+        self.rows = 10;
+        self.cols = 40;
 
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
@@ -205,7 +252,7 @@ impl ZellijPlugin for State {
             Event::PermissionRequestResult(status) => {
                 if status == PermissionStatus::Granted {
                     // perform an initial load of projects...
-                    refresh_projects();
+                    self.refresh_projects();
                 }
             }
             Event::CustomMessage(message, payload) => {
@@ -233,10 +280,14 @@ impl ZellijPlugin for State {
         should_render
     }
 
-    fn render(&mut self, _rows: usize, _cols: usize) {
+    fn render(&mut self, rows: usize, cols: usize) {
+        self.rows = rows - 3;
+        self.cols = cols;
+        self.update_selected(0, 0);
         println!("");
         println!(
-            " Open project: [{}]?",
+            "Filter: [{}] :: Open project: [{}]?",
+            color_bold(ORANGE, &self.search_term.to_string()),
             color_bold(GREEN, &self.selected.to_string())
         );
         println!("");
@@ -247,12 +298,14 @@ impl ZellijPlugin for State {
             self.top_idx
         );
         for (i, p) in self.filtered_projects.iter().enumerate() {
-            if i == self.sel_idx {
-                println!("{}", color_bold(GREEN, &format!("> {}", p).to_string()));
-            } else {
-                // we'll show 5 items at a time - adjust for rows
-                if i >= self.top_idx && i < self.top_idx + 5 {
-                    println!("{}", color_bold(WHITE, &format!("  {}", p).to_string()));
+            if i < self.rows {
+                if i == self.sel_idx {
+                    println!("{}", color_bold(GREEN, &format!("> {}", p).to_string()));
+                } else {
+                    // we'll show self.rows items at a time - adjust for rows
+                    if i >= self.top_idx && i < self.top_idx + self.rows {
+                        println!("{}", color_bold(WHITE, &format!("  {}", p).to_string()));
+                    }
                 }
             }
         }
@@ -274,24 +327,6 @@ fn color_bold(color: u8, text: &str) -> String {
 
 fn do_lines(lines: &str) -> BTreeMap<String, String> {
     return lines.lines().fold(default_projects(), |a, l| split(a, l));
-}
-
-fn refresh_projects() {
-    let mut options = BTreeMap::new();
-    options.insert("command".to_string(), "refresh_projects".to_string());
-    run_command(
-        &[
-            "fd",
-            "-Htd",
-            "^\\.git$",
-            "/Users/idavies",
-            "/Users/idavies/Documents",
-            "/Users/idavies/Documents/GitHub",
-            "/Users/idavies/Documents/GitHub/Github",
-            "--max-depth=2",
-        ],
-        options,
-    );
 }
 
 fn split(mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
