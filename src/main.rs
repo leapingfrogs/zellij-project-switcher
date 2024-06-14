@@ -58,7 +58,7 @@ impl State {
                     hide_self();
                     switch_session_with_layout(
                         Some(self.selected.as_str()),
-                        LayoutInfo::BuiltIn("default".into()),
+                        LayoutInfo::BuiltIn("compact".into()),
                         Some(cwd.into()),
                     );
                 },
