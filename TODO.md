@@ -7,4 +7,5 @@
 - [x] Allow specifying configuration or the project query filter
 - [ ] Cleanup UX
 - [x] Handle panel resize (rows & cols)
+- [x] allow configure default layout
 - [ ] Manage filter indexes more cleanly

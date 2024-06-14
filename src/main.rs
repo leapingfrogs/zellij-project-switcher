@@ -44,24 +44,27 @@ impl State {
         let mut options = BTreeMap::new();
         options.insert("command".to_string(), "refresh_projects".to_string());
 
-        run_command(
-            &roots,
-            options,
-        );
+        run_command(&roots, options);
     }
 
     pub fn handle_key(&mut self, key: Key) -> bool {
         if let Key::Char('\n') = key {
             eprintln!("Switch Project!");
+            let default = "default".to_string();
+            let layout = self
+                .userspace_configuration
+                .get("layout")
+                .unwrap_or_else(|| &default);
+
             match self.projects.get(&self.selected) {
                 Some(cwd) => {
                     hide_self();
                     switch_session_with_layout(
                         Some(self.selected.as_str()),
-                        LayoutInfo::BuiltIn("compact".into()),
+                        LayoutInfo::BuiltIn(layout.into()),
                         Some(cwd.into()),
                     );
-                },
+                }
                 None => (),
             }
             return true;
