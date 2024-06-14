@@ -46,16 +46,6 @@ impl State {
 
         run_command(
             &roots,
-            // &[
-            //     "fd",
-            //     "-Htd",
-            //     "^\\.git$",
-            //     "/Users/idavies",
-            //     "/Users/idavies/Documents",
-            //     "/Users/idavies/Documents/GitHub",
-            //     "/Users/idavies/Documents/GitHub/Github",
-            //     "--max-depth=2",
-            // ],
             options,
         );
     }
@@ -64,11 +54,14 @@ impl State {
         if let Key::Char('\n') = key {
             eprintln!("Switch Project!");
             match self.projects.get(&self.selected) {
-                Some(cwd) => switch_session_with_layout(
-                    Some(self.selected.as_str()),
-                    LayoutInfo::BuiltIn("default".into()),
-                    Some(cwd.into()),
-                ),
+                Some(cwd) => {
+                    hide_self();
+                    switch_session_with_layout(
+                        Some(self.selected.as_str()),
+                        LayoutInfo::BuiltIn("default".into()),
+                        Some(cwd.into()),
+                    );
+                },
                 None => (),
             }
             return true;
