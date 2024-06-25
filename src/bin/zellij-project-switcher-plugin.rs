@@ -22,10 +22,7 @@ struct State {
 
 impl State {
     pub fn refresh_projects(&mut self) {
-        core::refresh_projects(
-            &self.userspace_configuration, //.get("roots").cloned(),
-            run_command,
-        );
+        core::refresh_projects(&self.userspace_configuration, run_command);
     }
 
     pub fn handle_key(&mut self, key: Key) -> bool {
