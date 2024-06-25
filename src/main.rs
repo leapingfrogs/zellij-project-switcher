@@ -20,9 +20,8 @@ struct State {
 
 impl State {
     pub fn refresh_projects(&mut self) {
-        let get = self.userspace_configuration.get("roots");
-        let mut roots: Vec<&str> = match get {
-            Some(r) => r.split(":").collect(),
+        let mut roots: Vec<&str> = match self.userspace_configuration.get("roots") {
+            Some(r) => r.split(':').collect(),
             None => ["~"].into(),
         };
         eprintln!("Initial Roots: {:?}", roots);
@@ -41,23 +40,19 @@ impl State {
 
     pub fn handle_key(&mut self, key: Key) -> bool {
         if let Key::Char('\n') = key {
-            eprintln!("Switch Project!");
             let default = "default".to_string();
             let layout = self
                 .userspace_configuration
                 .get("layout")
-                .unwrap_or_else(|| &default);
+                .unwrap_or(&default);
 
-            match self.projects.get(&self.selected) {
-                Some(cwd) => {
-                    hide_self();
-                    switch_session_with_layout(
-                        Some(self.selected.as_str()),
-                        LayoutInfo::BuiltIn(layout.into()),
-                        Some(cwd.into()),
-                    );
-                }
-                None => (),
+            if let Some(cwd) = self.projects.get(&self.selected) {
+                hide_self();
+                switch_session_with_layout(
+                    Some(self.selected.as_str()),
+                    LayoutInfo::BuiltIn(layout.into()),
+                    Some(cwd.into()),
+                );
             }
             return true;
         }
@@ -84,7 +79,7 @@ impl State {
             return true;
         }
 
-        return false;
+        false
     }
 
     pub fn update_search_term(&mut self, character: char) {
@@ -106,7 +101,7 @@ impl State {
 
     pub fn update_selected(&mut self, down: usize, up: usize) {
         let mut new_idx = if self.sel_idx >= self.filtered_projects.len() {
-            if self.filtered_projects.len() > 0 {
+            if !self.filtered_projects.is_empty() {
                 self.filtered_projects.len() - 1
             } else {
                 0
@@ -126,12 +121,8 @@ impl State {
         } else {
             self.top_idx = 0;
         }
-        match self.filtered_projects.iter().nth(self.sel_idx) {
-            Some(k) => {
-                self.selected = k.clone();
-                ();
-            }
-            None => (),
+        if let Some(k) = self.filtered_projects.iter().nth(self.sel_idx) {
+            self.selected.clone_from(k);
         }
     }
 
@@ -182,7 +173,7 @@ impl State {
     fn default_projects(&mut self) -> BTreeMap<String, String> {
         let mut projects = BTreeMap::new();
         projects.insert("default".into(), "/Users/idavies".into());
-        return projects;
+        projects
     }
 }
 
@@ -264,13 +255,13 @@ impl ZellijPlugin for State {
         self.rows = rows - 3;
         self.cols = cols;
         self.update_selected(0, 0);
-        println!("");
+        println!();
         println!(
             "Filter: [{}] :: Open project: [{}]?",
             color_bold(ORANGE, &self.search_term.to_string()),
             color_bold(GREEN, &self.selected.to_string())
         );
-        println!("");
+        println!();
         eprintln!(
             "Render {:?} projects... (sel: {:?}, top: {:?})",
             self.projects.len(),

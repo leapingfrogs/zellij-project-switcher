@@ -5,7 +5,7 @@
 - [x] Allow selecting a project name in the UI
 - [x] Allow filtering the project names by typing in the UI
 - [x] Allow specifying configuration or the project query filter
-- [ ] Cleanup UX
+- [x] Cleanup UX
 - [x] Handle panel resize (rows & cols)
 - [x] allow configure default layout
 - [ ] Manage filter indexes more cleanly
