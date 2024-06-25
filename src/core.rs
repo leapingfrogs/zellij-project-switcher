@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-pub fn refresh_projects<RC>(config: Option<String>, mut f: RC)
+pub fn refresh_projects<RC>(config: &BTreeMap<String, String> /*Option<String>*/, mut f: RC)
 where
     RC: FnMut(&[&str], BTreeMap<String, String>),
 {
@@ -13,8 +13,8 @@ where
         String::from("^\\.git$"),
     ]);
 
-    let roots = config.unwrap_or(String::from("~"));
-    for root in roots.split(':') {
+    let default_root = &String::from("~");
+    for root in config.get("roots").unwrap_or(default_root).split(':') {
         cmd.push(root.to_string());
     }
 
@@ -32,7 +32,7 @@ mod test {
     fn refresh_projects_returns_expected_options() {
         let mut opts: Option<BTreeMap<String, String>> = None;
 
-        refresh_projects(None, |_, context| -> () {
+        refresh_projects(&BTreeMap::new(), |_, context| -> () {
             opts = Some(context);
         });
         assert_eq!(
@@ -48,7 +48,7 @@ mod test {
     fn refresh_projects_base_command() {
         let mut cmd: Vec<String> = Vec::new();
 
-        refresh_projects(None, |c, _| -> () {
+        refresh_projects(&BTreeMap::new(), |c, _| -> () {
             for item in c {
                 cmd.push(item.to_string());
             }
@@ -60,7 +60,7 @@ mod test {
     fn refresh_projects_with_default_root() {
         let mut cmd: Vec<String> = Vec::new();
 
-        refresh_projects(None, |c, _| -> () {
+        refresh_projects(&BTreeMap::new(), |c, _| -> () {
             for item in c {
                 cmd.push(item.to_string());
             }
@@ -72,14 +72,15 @@ mod test {
     fn refresh_projects_with_configured_roots() {
         let mut cmd: Vec<String> = Vec::new();
 
-        refresh_projects(
-            Some(String::from("~/personal_projects:~/work_projects")),
-            |c, _| -> () {
-                for item in c {
-                    cmd.push(item.to_string());
-                }
-            },
-        );
+        let config = BTreeMap::from([(
+            String::from("roots"),
+            String::from("~/personal_projects:~/work_projects"),
+        )]);
+        refresh_projects(&config, |c, _| -> () {
+            for item in c {
+                cmd.push(item.to_string());
+            }
+        });
         assert_eq!(cmd[4..], vec!["~/personal_projects", "~/work_projects"]);
     }
 }
