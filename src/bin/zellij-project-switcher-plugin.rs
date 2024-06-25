@@ -23,7 +23,7 @@ struct State {
 impl State {
     pub fn refresh_projects(&mut self) {
         core::refresh_projects(
-            self.userspace_configuration.get("roots").cloned(),
+            &self.userspace_configuration, //.get("roots").cloned(),
             run_command,
         );
     }
