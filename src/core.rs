@@ -32,7 +32,7 @@ mod test {
     fn refresh_projects_returns_expected_options() {
         let mut opts: Option<BTreeMap<String, String>> = None;
 
-        refresh_projects(&BTreeMap::new(), |_, context| -> () {
+        refresh_projects(&BTreeMap::new(), |_, context| {
             opts = Some(context);
         });
         assert_eq!(
@@ -48,7 +48,7 @@ mod test {
     fn refresh_projects_base_command() {
         let mut cmd: Vec<String> = Vec::new();
 
-        refresh_projects(&BTreeMap::new(), |c, _| -> () {
+        refresh_projects(&BTreeMap::new(), |c, _| {
             for item in c {
                 cmd.push(item.to_string());
             }
@@ -60,7 +60,7 @@ mod test {
     fn refresh_projects_with_default_root() {
         let mut cmd: Vec<String> = Vec::new();
 
-        refresh_projects(&BTreeMap::new(), |c, _| -> () {
+        refresh_projects(&BTreeMap::new(), |c, _| {
             for item in c {
                 cmd.push(item.to_string());
             }
@@ -76,7 +76,7 @@ mod test {
             String::from("roots"),
             String::from("~/personal_projects:~/work_projects"),
         )]);
-        refresh_projects(&config, |c, _| -> () {
+        refresh_projects(&config, |c, _| {
             for item in c {
                 cmd.push(item.to_string());
             }
