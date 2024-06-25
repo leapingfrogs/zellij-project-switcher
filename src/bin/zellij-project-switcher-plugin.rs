@@ -5,6 +5,8 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+use zellij_project_switcher_plugin::*;
+
 #[derive(Default)]
 struct State {
     userspace_configuration: BTreeMap<String, String>,
@@ -20,22 +22,10 @@ struct State {
 
 impl State {
     pub fn refresh_projects(&mut self) {
-        let mut roots: Vec<&str> = match self.userspace_configuration.get("roots") {
-            Some(r) => r.split(':').collect(),
-            None => ["~"].into(),
-        };
-        eprintln!("Initial Roots: {:?}", roots);
-
-        roots.insert(0, "^\\.git$");
-        roots.insert(0, "--max-depth=2");
-        roots.insert(0, "-Htd");
-        roots.insert(0, "fd");
-        eprintln!("Roots: {:?}", roots);
-
-        let mut options = BTreeMap::new();
-        options.insert("command".to_string(), "refresh_projects".to_string());
-
-        run_command(&roots, options);
+        core::refresh_projects(
+            self.userspace_configuration.get("roots").cloned(),
+            run_command,
+        );
     }
 
     pub fn handle_key(&mut self, key: Key) -> bool {
@@ -180,6 +170,7 @@ impl State {
 #[derive(Default, Serialize, Deserialize)]
 pub struct ProjectWorker {}
 
+#[cfg(not(test))]
 register_plugin!(State);
 
 impl ZellijPlugin for State {

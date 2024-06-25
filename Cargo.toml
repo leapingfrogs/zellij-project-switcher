@@ -1,12 +1,34 @@
 [package]
-name = "project-switcher-plugin"
+name = "zellij-project-switcher-plugin"
 version = "0.1.0"
 edition = "2018"
 authors = ["Ian Davies <idavies@leapingfrogs.com>"]
 
+[[bin]]
+name = "zellij-project-switcher-plugin"
+bench = false
+
+[lib]
+bench = false
+
+[features]
+bench = []
+tracing = []
+
 [dependencies]
-ansi_term = "0.12.1"
 zellij-tile = "0.40.1"
+ansi_term = "0.12.1"
 chrono = "0.4.0"
 serde = "1.0.203"
 regex = "1.10.5"
+
+[dev-dependencies]
+criterion = { version = "0.5.1", default-features = false, features = ["html_reports"] }
+
+# [[bench]]
+# name = "benches"
+# harness = false
+
+# [[bench]]
+# name = "widgets"
+# harness = false
