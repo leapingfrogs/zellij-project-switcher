@@ -9,3 +9,5 @@
 - [x] Handle panel resize (rows & cols)
 - [x] allow configure default layout
 - [ ] Manage filter indexes more cleanly
+- [ ] Handle select current workspace gracefully
+    - filter out / close?
