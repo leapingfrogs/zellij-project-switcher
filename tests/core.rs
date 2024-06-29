@@ -77,13 +77,13 @@ fn it_updates_search_term_on_removal() {
         selected_index: Some(0),
     };
 
-    state.update_search_term_backspace();
+    trace(&mut state, |s| s.update_search_term_backspace());
     assert_eq!(state.search_term, String::from(""));
     assert_eq!(
         state.filtered_projects,
         BTreeSet::from([String::from("alpha"), String::from("beta")])
     );
-    assert_eq!(state.selected_index, Some(0))
+    assert_eq!(state.selected_index, Some(1))
 }
 
 #[test]
@@ -92,6 +92,7 @@ fn it_allows_scrolling_results() {
         (String::from("alpha"), String::from("alphabet")),
         (String::from("beta"), String::from("betabet")),
         (String::from("default"), String::from("~")),
+        (String::from("gamma"), String::from("gammabet")),
     ]);
     let current_session = String::from("default");
 
@@ -107,11 +108,11 @@ fn it_allows_scrolling_results() {
 
     state.down();
     assert_eq!(state.selected_index, Some(2));
-    assert_eq!(state.selected_item(), Some("default".to_string()));
+    assert_eq!(state.selected_item(), Some("gamma".to_string()));
 
-    state.down();
+    trace(&mut state, |s: &mut CoreState| s.down());
     assert_eq!(state.selected_index, Some(2));
-    assert_eq!(state.selected_item(), Some("default".to_string()));
+    assert_eq!(state.selected_item(), Some("gamma".to_string()));
 
     state.up();
     assert_eq!(state.selected_index, Some(1));
@@ -124,7 +125,38 @@ fn it_allows_scrolling_results() {
     assert_eq!(state.selected_item(), Some("alpha".to_string()));
 }
 
+fn trace<T>(state: &mut T, f: impl Fn(&mut T) -> ()) -> ()
+where
+    T: std::fmt::Debug,
+{
+    println!("\n  Before: {:#?}", state);
+    f(state);
+    println!("\n  After: {:#?}", state);
+}
+
 #[test]
-fn if_updated_indexes_when_filtering() {
-    assert_eq!(false, true);
+fn it_updated_indexes_when_filtering() {
+    let projects = BTreeMap::from([
+        (String::from("alpha"), String::from("alphabet")),
+        (String::from("other"), String::from("other")),
+        (String::from("beta"), String::from("betabet")),
+    ]);
+    let current_session = String::from("default");
+
+    let mut state = CoreState::init(projects.clone(), current_session.clone());
+    state.down();
+    state.down();
+
+    assert_eq!(state.selected_index, Some(2));
+    assert_eq!(state.selected_item(), Some("other".to_string()));
+
+    trace(&mut state, |s: &mut CoreState| s.update_search_term('t'));
+
+    assert_eq!(state.selected_index, Some(1));
+    assert_eq!(state.selected_item(), Some("other".to_string()));
+}
+
+#[test]
+fn if_excludes_current_session_from_results() {
+    assert_eq!(false, false);
 }

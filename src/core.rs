@@ -1,5 +1,5 @@
 use std::{
-    cmp::{max, min},
+    cmp::min,
     collections::{BTreeMap, BTreeSet},
 };
 
@@ -27,6 +27,7 @@ where
     f(&cmd, options);
 }
 
+#[derive(Debug, Default)]
 pub struct CoreState {
     pub projects: BTreeMap<String, String>,
     pub search_term: String,
@@ -50,62 +51,15 @@ impl CoreState {
 
     pub fn update_search_term(&mut self, char: char) {
         self.search_term.push(char);
-        let regex_str = self
-            .search_term
-            .chars()
-            .enumerate()
-            .fold(String::new(), |acc, (i, c)| {
-                if i != 0 {
-                    format!("{}.*?{}", acc, c)
-                } else {
-                    format!("{}{}", acc, c)
-                }
-            });
-        let regex = RegexBuilder::new(&regex_str)
-            .case_insensitive(true)
-            .build()
-            .unwrap();
-        self.filtered_projects = self
-            .projects
-            .keys()
-            .filter(|p| !self.current_session.eq(*p))
-            .filter(|p| regex.is_match(p))
-            .fold(BTreeSet::new(), |mut c, v| {
-                c.insert(v.to_owned());
-                c
-            });
+        self.update_filtered_projects();
     }
 
-    // TODO reduce duplication
     pub fn update_search_term_backspace(&mut self) {
         if self.search_term.is_empty() {
             return;
         };
         self.search_term.pop();
-        let regex_str = self
-            .search_term
-            .chars()
-            .enumerate()
-            .fold(String::new(), |acc, (i, c)| {
-                if i != 0 {
-                    format!("{}.*?{}", acc, c)
-                } else {
-                    format!("{}{}", acc, c)
-                }
-            });
-        let regex = RegexBuilder::new(&regex_str)
-            .case_insensitive(true)
-            .build()
-            .unwrap();
-        self.filtered_projects = self
-            .projects
-            .keys()
-            .filter(|p| !self.current_session.eq(*p))
-            .filter(|p| regex.is_match(p))
-            .fold(BTreeSet::new(), |mut c, v| {
-                c.insert(v.to_owned());
-                c
-            });
+        self.update_filtered_projects();
     }
 
     pub fn up(&mut self) {
@@ -113,26 +67,77 @@ impl CoreState {
             Some(0) => Some(0),
             Some(index) => Some(index - 1),
             None => None,
-        }
+        };
+        self.update_filtered_projects();
     }
 
     pub fn down(&mut self) {
         self.selected_index = match self.selected_index {
-            Some(index) => Some(min(self.filtered_projects.len(), index + 1)),
+            Some(index) => Some(min(self.filtered_projects.len() - 1, index + 1)),
             None => None,
         };
+        self.update_filtered_projects();
     }
 
     pub fn selected_item(&self) -> Option<String> {
         match self.selected_index {
             Some(index) => self
-                .projects
+                .filtered_projects
                 .clone()
                 .into_iter()
                 .nth(index)
-                .and_then(|(k, _)| Some(k)),
+                .and_then(|k| Some(k)),
             None => None,
         }
+    }
+
+    fn update_filtered_projects(&mut self) {
+        let prior_selection = &self.selected_item();
+
+        let regex = self.build_search_regex();
+        self.filtered_projects = self
+            .projects
+            .keys()
+            .filter(|p| !self.current_session.eq(*p))
+            .filter(|p| regex.is_match(p))
+            .fold(BTreeSet::new(), |mut c, v| {
+                c.insert(v.to_owned());
+                c
+            });
+
+        // now seek current selection, if present update index
+        // otherwise update current selection
+        match self
+            .filtered_projects
+            .clone()
+            .iter()
+            .position(|i| match prior_selection {
+                Some(item) => i.eq(item),
+                None => false,
+            }) {
+            Some(position) => {
+                self.selected_index = Some(position);
+            }
+            None => {}
+        }
+    }
+
+    fn build_search_regex(&mut self) -> regex::Regex {
+        let regex_str = self
+            .search_term
+            .chars()
+            .enumerate()
+            .fold(String::new(), |acc, (i, c)| {
+                if i != 0 {
+                    format!("{}.*?{}", acc, c)
+                } else {
+                    format!("{}{}", acc, c)
+                }
+            });
+        RegexBuilder::new(&regex_str)
+            .case_insensitive(true)
+            .build()
+            .unwrap()
     }
 }
 
