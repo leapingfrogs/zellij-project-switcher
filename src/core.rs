@@ -5,7 +5,7 @@ use std::{
 
 use regex::RegexBuilder;
 
-pub fn refresh_projects<RC>(config: &BTreeMap<String, String> /*Option<String>*/, mut f: RC)
+pub fn refresh_projects<RC>(config: &BTreeMap<String, String>, mut f: RC)
 where
     RC: FnMut(&[&str], BTreeMap<String, String>),
 {
@@ -81,12 +81,7 @@ impl CoreState {
 
     pub fn selected_item(&self) -> Option<String> {
         match self.selected_index {
-            Some(index) => self
-                .filtered_projects
-                .clone()
-                .into_iter()
-                .nth(index)
-                .and_then(|k| Some(k)),
+            Some(index) => self.filtered_projects.clone().into_iter().nth(index),
             None => None,
         }
     }
@@ -107,18 +102,16 @@ impl CoreState {
 
         // now seek current selection, if present update index
         // otherwise update current selection
-        match self
-            .filtered_projects
-            .clone()
-            .iter()
-            .position(|i| match prior_selection {
-                Some(item) => i.eq(item),
-                None => false,
-            }) {
-            Some(position) => {
-                self.selected_index = Some(position);
-            }
-            None => {}
+        if let Some(position) =
+            self.filtered_projects
+                .clone()
+                .iter()
+                .position(|i| match prior_selection {
+                    Some(item) => i.eq(item),
+                    None => false,
+                })
+        {
+            self.selected_index = Some(position);
         }
     }
 
