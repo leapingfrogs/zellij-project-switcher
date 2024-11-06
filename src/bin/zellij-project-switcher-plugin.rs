@@ -28,8 +28,10 @@ impl State {
         core::refresh_projects(&self.userspace_configuration, run_command);
     }
 
-    pub fn handle_key(&mut self, key: Key) -> bool {
-        if let Key::Char('\n') = key {
+    pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
+        eprintln!("into handle_ley with: {:?}", key);
+
+        if let BareKey::Enter = key.bare_key {
             let default = "default".to_string();
             let layout = self
                 .userspace_configuration
@@ -54,25 +56,25 @@ impl State {
             }
             return true;
         }
-        if let Key::Backspace = key {
+        if let BareKey::Backspace = key.bare_key {
             self.handle_backspace();
             return true;
         }
-        if let Key::Esc = key {
+        if let BareKey::Esc = key.bare_key {
             close_self();
             return true;
         }
-        if let Key::Down = key {
+        if let BareKey::Down = key.bare_key {
             eprintln!("Down");
             self.update_selected(1, 0);
             return true;
         }
-        if let Key::Up = key {
+        if let BareKey::Up = key.bare_key {
             eprintln!("Up");
             self.update_selected(0, 1);
             return true;
         }
-        if let Key::Char(char) = key {
+        if let BareKey::Char(char) = key.bare_key {
             self.update_search_term(char);
             return true;
         }
