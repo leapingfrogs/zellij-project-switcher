@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Setup
+      run: rustup target add wasm32-wasi
     - name: Build
       run: cargo build --verbose --features tracing
     - name: Run tests
