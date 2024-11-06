@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Check Env
+      run: rustup show
     - name: Setup wasm32-wasip1
       run: rustup target add wasm32-wasip1
     - name: Install cargo-wasi
