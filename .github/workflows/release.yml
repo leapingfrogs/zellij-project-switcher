@@ -1,0 +1,28 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main", "release" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check Env
+      run: rustup show
+    - name: Install cargo-wasi
+      run: cargo install cargo-wasi
+    - name: Build
+      run: cargo wasi build --release --features tracing
+    - name: Run tests
+      run: cargo wasi test --all
+    - name: Show outputs
+      run: ls -la target/wasm32-wasi/release/zellij-project-switcher-plugin.wasm
