@@ -5,6 +5,8 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+use zellij_project_switcher_plugin::*;
+
 #[derive(Default)]
 struct State {
     userspace_configuration: BTreeMap<String, String>,
@@ -16,30 +18,20 @@ struct State {
     search_term: String,
     rows: usize,
     cols: usize,
+    current_session: Option<String>,
+    pending_events: Vec<Event>,
+    got_permissions: bool,
 }
 
 impl State {
     pub fn refresh_projects(&mut self) {
-        let mut roots: Vec<&str> = match self.userspace_configuration.get("roots") {
-            Some(r) => r.split(':').collect(),
-            None => ["~"].into(),
-        };
-        eprintln!("Initial Roots: {:?}", roots);
-
-        roots.insert(0, "^\\.git$");
-        roots.insert(0, "--max-depth=2");
-        roots.insert(0, "-Htd");
-        roots.insert(0, "fd");
-        eprintln!("Roots: {:?}", roots);
-
-        let mut options = BTreeMap::new();
-        options.insert("command".to_string(), "refresh_projects".to_string());
-
-        run_command(&roots, options);
+        core::refresh_projects(&self.userspace_configuration, run_command);
     }
 
-    pub fn handle_key(&mut self, key: Key) -> bool {
-        if let Key::Char('\n') = key {
+    pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
+        eprintln!("into handle_ley with: {:?}", key);
+
+        if let BareKey::Enter = key.bare_key {
             let default = "default".to_string();
             let layout = self
                 .userspace_configuration
@@ -47,34 +39,42 @@ impl State {
                 .unwrap_or(&default);
 
             if let Some(cwd) = self.projects.get(&self.selected) {
-                hide_self();
-                switch_session_with_layout(
-                    Some(self.selected.as_str()),
-                    LayoutInfo::BuiltIn(layout.into()),
-                    Some(cwd.into()),
-                );
+                if self
+                    .current_session
+                    .clone()
+                    .is_some_and(|cs| cs.eq(&self.selected))
+                {
+                    eprintln!("Refusing to launch current session");
+                } else {
+                    hide_self();
+                    switch_session_with_layout(
+                        Some(self.selected.as_str()),
+                        LayoutInfo::BuiltIn(layout.into()),
+                        Some(cwd.into()),
+                    );
+                }
             }
             return true;
         }
-        if let Key::Backspace = key {
+        if let BareKey::Backspace = key.bare_key {
             self.handle_backspace();
             return true;
         }
-        if let Key::Esc = key {
+        if let BareKey::Esc = key.bare_key {
             close_self();
             return true;
         }
-        if let Key::Down = key {
+        if let BareKey::Down = key.bare_key {
             eprintln!("Down");
             self.update_selected(1, 0);
             return true;
         }
-        if let Key::Up = key {
+        if let BareKey::Up = key.bare_key {
             eprintln!("Up");
             self.update_selected(0, 1);
             return true;
         }
-        if let Key::Char(char) = key {
+        if let BareKey::Char(char) = key.bare_key {
             self.update_search_term(char);
             return true;
         }
@@ -153,9 +153,9 @@ impl State {
     }
 
     fn do_lines(&mut self, lines: &str) -> BTreeMap<String, String> {
-        return lines
-            .lines()
-            .fold(self.default_projects(), |a, l| self.split(a, l));
+        let init = self.default_projects();
+        eprintln!("Default Projects: {:?}", self.projects,);
+        return lines.lines().fold(init, |a, l| self.split(a, l));
     }
 
     fn split(&mut self, mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
@@ -173,13 +173,60 @@ impl State {
     fn default_projects(&mut self) -> BTreeMap<String, String> {
         let mut projects = BTreeMap::new();
         projects.insert("default".into(), "/Users/idavies".into());
+        projects.insert(
+            "zps-dev".into(),
+            "/Users/idavies/Documents/GitHub/zellij-project-switcher".into(),
+        );
         projects
+    }
+
+    fn handle_event(&mut self, event: Event) -> bool {
+        let mut should_render = false;
+        match event {
+            Event::PermissionRequestResult(status) => {
+                if status == PermissionStatus::Granted {
+                    // perform an initial load of projects...
+                    self.refresh_projects();
+                }
+            }
+            Event::CustomMessage(message, payload) => {
+                eprintln!("custom_message: {:?} payload: {:?}", message, payload);
+                should_render = false;
+            }
+            Event::Key(key) => {
+                should_render = self.handle_key(key);
+            }
+            Event::ModeUpdate(mode_info) => {
+                match mode_info.session_name {
+                    Some(ref name) => eprintln!("mode_info: {:?}", name),
+                    None => eprintln!("mode_info: missing"),
+                }
+                self.current_session = mode_info.session_name.clone();
+                should_render = true;
+            }
+            Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
+                if status == 0 {
+                    let mut v = match std::str::from_utf8(&stdin) {
+                        Ok(val) => self.do_lines(val),
+
+                        Err(_) => self.default_projects(),
+                    };
+                    self.projects.append(&mut v);
+                    self.update_filtered();
+                    self.update_selected(0, 0);
+                }
+                should_render = true;
+            }
+            _ => (),
+        };
+        should_render
     }
 }
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct ProjectWorker {}
 
+#[cfg(not(test))]
 register_plugin!(State);
 
 impl ZellijPlugin for State {
@@ -207,6 +254,7 @@ impl ZellijPlugin for State {
             PermissionType::RunCommands,
         ]);
         subscribe(&[
+            EventType::ModeUpdate,
             EventType::Key,
             EventType::CustomMessage,
             EventType::RunCommandResult,
@@ -218,37 +266,24 @@ impl ZellijPlugin for State {
         true
     }
     fn update(&mut self, event: Event) -> bool {
-        let mut should_render = false;
-        match event {
-            Event::PermissionRequestResult(status) => {
-                if status == PermissionStatus::Granted {
-                    // perform an initial load of projects...
-                    self.refresh_projects();
-                }
-            }
-            Event::CustomMessage(message, payload) => {
-                eprintln!("custom_message: {:?} payload: {:?}", message, payload);
-                should_render = false;
-            }
-            Event::Key(key) => {
-                should_render = self.handle_key(key);
-            }
-            Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
-                if status == 0 {
-                    let mut v = match std::str::from_utf8(&stdin) {
-                        Ok(val) => self.do_lines(val),
+        if let Event::PermissionRequestResult(PermissionStatus::Granted) = event {
+            self.got_permissions = true;
 
-                        Err(_) => self.default_projects(),
-                    };
-                    self.projects.append(&mut v);
-                    self.update_filtered();
-                    self.update_selected(0, 0);
-                }
-                should_render = true;
+            while !self.pending_events.is_empty() {
+                let ev = self.pending_events.pop();
+                self.handle_event(ev.unwrap());
             }
-            _ => (),
-        };
-        should_render
+
+            // perform an initial load of projects...
+            self.refresh_projects();
+        }
+
+        if !self.got_permissions {
+            self.pending_events.push(event);
+            return false;
+        }
+
+        self.handle_event(event)
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
@@ -257,7 +292,14 @@ impl ZellijPlugin for State {
         self.update_selected(0, 0);
         println!();
         println!(
-            "Filter: [{}] :: Open project: [{}]?",
+            "Current: [{}] :: Filter: [{}] :: Open project: [{}]?",
+            color_bold(
+                CYAN,
+                &self
+                    .current_session
+                    .clone()
+                    .unwrap_or("<unknown>".to_string())
+            ),
             color_bold(ORANGE, &self.search_term.to_string()),
             color_bold(GREEN, &self.selected.to_string())
         );
@@ -268,6 +310,7 @@ impl ZellijPlugin for State {
             self.sel_idx,
             self.top_idx
         );
+        eprintln!("Defaults {:?}", self.default_projects());
         for (i, p) in self.filtered_projects.iter().enumerate() {
             if i < self.rows {
                 if i == self.sel_idx {

@@ -11,6 +11,12 @@ More about Zellij plugins: [Zellij Documentation][docs]
 
 *Note*: you will need to have `wasm32-wasi` added to rust as a target to build the plugin. This can be done with `rustup target add wasm32-wasi`.
 
+You may also need wasmtime, try:
+
+```bash
+curl https://wasmtime.dev/install.sh -sSf | bash
+```
+
 ## Inside Zellij
 ![img-2023-06-14-143355](https://github.com/zellij-org/rust-plugin-example/assets/795598/d9e563dc-5d71-4e10-af5b-190365bdca3b)
 
