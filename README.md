@@ -1,11 +1,35 @@
 ## About
 
-This is an example [Zellij][zellij] plugin in Rust. It can be used as a template to start developing your own plugins.
+This is an simple Zellij plugin that allows switching sessions between local github projects.
 
-More about Zellij plugins: [Zellij Documentation][docs]
+## Dependencies
 
-[zellij]: https://github.com/zellij-org/zellij
-[docs]: https://zellij.dev/documentation/plugins.html
+This plugin requires the `fd` command, see the [fd github project](https://github.com/sharkdp/fd?tab=readme-ov-file#installation) for more
+information and installation details.
+
+## Configuration
+
+To use this in your own Zellij setup add a section similar to the following to your zellij keybinds config:
+
+```kdl
+keybinds {
+  bind "Ctrl s" {
+    LaunchOrFocusPlugin "https://github.com/leapingfrogs/zellij-project-switcher/releases/latest/download/zellij-project-switcher-plugin.wasm" {
+        floating true
+        roots "/Users/xyzzy/<parent_of_git_repos>"
+        width "20%"
+        height "20%"
+        x "40%"
+        y "40%"
+    }
+  }
+}
+```
+
+The `roots` attribute accepts multiple paths separated by a `:`, I recommend pointing to parent folders of your common roots into which
+you checkout git repositories, as this helps keep the performance up. Internally the plugin passes these to the `fd` tool to find local 
+repositories. You will need to first install that for the plugin to run, see [dependencies](#dependencies).
+
 
 ## Development
 
