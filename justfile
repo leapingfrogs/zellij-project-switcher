@@ -1,14 +1,12 @@
 build:
-	cargo build --features tracing
+	cargo wasi build --features tracing
 
 build-release:
-	cargo build --release --features tracing
-
-run: build
-	zellij -l ./plugin-dev-workspace.kdl -s zps-dev
+	cargo wasi build --release --features tracing
 
 test:
-	cargo watch -x "nextest run --tests"
+	cargo wasi test --all
+	# cargo watch -x "nextest run --tests"
 
 lint:
 	cargo clippy --all-targets --all-features

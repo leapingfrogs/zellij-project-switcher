@@ -1,4 +1,4 @@
-use ansi_term::{Colour::Fixed, Style};
+use nu_ansi_term::{Color::Fixed, Style};
 use zellij_tile::prelude::*;
 
 use regex::{Regex, RegexBuilder};
