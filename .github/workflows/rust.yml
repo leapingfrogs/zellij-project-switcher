@@ -16,11 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Check Env
-      run: rustup show
+    - name: Setup `wasmtime`
+      uses: bytecodealliance/actions/wasmtime/setup@v1
     - name: Install cargo-wasi
       run: cargo install cargo-wasi
     - name: Build
-      run: cargo wasi build --features tracing --verbose # --features tracing
+      run: cargo wasi build --features tracing
     # - name: Run tests
     #   run: cargo wasi test --all
