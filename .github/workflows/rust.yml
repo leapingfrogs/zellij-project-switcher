@@ -25,4 +25,4 @@ jobs:
     - name: Build
       run: cargo wasi build --verbose # --features tracing
     - name: Run tests
-      run: cargo nextest run --tests
+      run: cargo wasi test --all
