@@ -1,12 +1,12 @@
 build:
-	cargo wasi build --features tracing
+	cargo build --features tracing
 
 build-release:
-	cargo wasi build --release --features tracing
+	cargo build --release --features tracing
 
 test:
-	cargo wasi test --all
-	# cargo watch -x "nextest run --tests"
+	# cargo wasi test --all
+	cargo watch -x "nextest run --tests"
 
 lint:
 	cargo clippy --all-targets --all-features
