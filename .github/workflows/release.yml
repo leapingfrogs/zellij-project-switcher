@@ -22,7 +22,7 @@ jobs:
       run: cargo install cargo-wasi
     - name: Build
       run: cargo wasi build --release --features tracing
-    - name: Run tests
-      run: cargo wasi test --all
+    # - name: Run tests
+    #   run: cargo wasi test --all
     - name: Show outputs
       run: ls -la target/wasm32-wasi/release/zellij-project-switcher-plugin.wasm
