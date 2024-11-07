@@ -23,6 +23,6 @@ jobs:
     - name: Install cargo-wasi
       run: cargo install cargo-wasi
     - name: Build
-      run: cargo build --verbose # --features tracing
+      run: cargo wasi build --verbose # --features tracing
     - name: Run tests
       run: cargo nextest run --tests
