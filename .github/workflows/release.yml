@@ -17,10 +17,10 @@ jobs:
     - uses: actions/checkout@v4
     - name: Setup `wasmtime`
       uses: bytecodealliance/actions/wasmtime/setup@v1
-    - name: Install cargo-wasi
-      run: cargo install cargo-wasi
+    - name: Install cargo-wasip1
+      run: rustup target add wasm32-wasip1
     - name: Build
-      run: cargo wasi build --release --features tracing
+      run: cargo build --target wasm32-wasip1 --release --features tracing
     - name: Release
       uses: softprops/action-gh-release@v2
       if: startswith(github.ref, 'refs/tags/')
