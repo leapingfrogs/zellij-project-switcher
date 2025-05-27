@@ -25,4 +25,4 @@ jobs:
       uses: softprops/action-gh-release@v2
       if: startswith(github.ref, 'refs/tags/')
       with:
-        files: target/wasm32-wasi/release/zellij-project-switcher-plugin.wasm
+        files: target/wasm32-wasip1/release/zellij-project-switcher-plugin.wasm
