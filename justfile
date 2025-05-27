@@ -9,7 +9,7 @@ test:
 	cargo watch -x "nextest run --tests"
 
 lint:
-	cargo clippy --all-targets --all-features
+	cargo clippy --all-targets --all-features -- -W clippy::pedantic
 	cargo audit
 
 
