@@ -11,7 +11,7 @@ fn it_inits_the_state() {
     ]);
     let current_session = String::from("default");
 
-    let state = CoreState::init(projects.clone(), current_session.clone());
+    let state = CoreState::init(&projects, current_session.clone());
 
     assert_eq!(state.projects, projects);
     assert_eq!(
@@ -21,7 +21,7 @@ fn it_inits_the_state() {
 
     assert_eq!(state.search_term, String::new());
     assert_eq!(state.current_session, current_session);
-    assert_eq!(state.selected_index, Some(0))
+    assert_eq!(state.selected_index, Some(0));
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn it_inits_the_state_when_no_projects() {
     let projects = BTreeMap::new();
     let current_session = String::from("default");
 
-    let state = CoreState::init(projects.clone(), current_session.clone());
+    let state = CoreState::init(&projects, current_session.clone());
 
     assert_eq!(state.projects, projects);
 
@@ -37,13 +37,13 @@ fn it_inits_the_state_when_no_projects() {
 
     assert_eq!(state.search_term, String::new());
     assert_eq!(state.current_session, current_session);
-    assert_eq!(state.selected_index, None)
+    assert_eq!(state.selected_index, None);
 }
 
 #[test]
 fn it_updates_search_term_on_addition() {
     let mut state = CoreState::init(
-        BTreeMap::from([
+        &BTreeMap::from([
             (String::from("alphab"), String::from("alphabet")),
             (String::from("beta"), String::from("betabet")),
             (String::from("default"), String::from("~")),
@@ -87,7 +87,7 @@ fn it_updates_search_term_on_removal() {
     };
 
     state.update_search_term_backspace();
-    assert_eq!(state.search_term, String::from(""));
+    assert_eq!(state.search_term, String::new());
     assert_eq!(
         state.filtered_projects,
         BTreeSet::from([String::from("alpha"), String::from("beta")])
@@ -99,7 +99,7 @@ fn it_updates_search_term_on_removal() {
 #[test]
 fn it_allows_scrolling_results() {
     let mut state = CoreState::init(
-        BTreeMap::from([
+        &BTreeMap::from([
             (String::from("alpha"), String::from("alphabet")),
             (String::from("beta"), String::from("betabet")),
             (String::from("default"), String::from("~")),
@@ -145,7 +145,7 @@ fn it_updates_indexes_when_filtering() {
     ]);
     let current_session = String::from("default");
 
-    let mut state = CoreState::init(projects.clone(), current_session.clone());
+    let mut state = CoreState::init(&projects, current_session.clone());
     state.down();
     state.down();
 

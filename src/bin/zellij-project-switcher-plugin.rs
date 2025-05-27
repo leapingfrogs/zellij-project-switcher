@@ -5,7 +5,7 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-use zellij_project_switcher_plugin::*;
+use zellij_project_switcher_plugin::core;
 
 #[derive(Default)]
 struct State {
@@ -28,8 +28,8 @@ impl State {
         core::refresh_projects(&self.userspace_configuration, run_command);
     }
 
-    pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
-        eprintln!("into handle_ley with: {:?}", key);
+    pub fn handle_key(&mut self, key: &KeyWithModifier) -> bool {
+        eprintln!("into handle_ley with: {key:?}");
 
         if let BareKey::Enter = key.bare_key {
             let default = "default".to_string();
@@ -101,20 +101,20 @@ impl State {
 
     pub fn update_selected(&mut self, down: usize, up: usize) {
         let mut new_idx = if self.sel_idx >= self.filtered_projects.len() {
-            if !self.filtered_projects.is_empty() {
-                self.filtered_projects.len() - 1
-            } else {
+            if self.filtered_projects.is_empty() {
                 0
+            } else {
+                self.filtered_projects.len() - 1
             }
         } else {
             self.sel_idx
         };
         if new_idx > 0 {
-            new_idx -= up
-        };
+            new_idx -= up;
+        }
         if new_idx < self.filtered_projects.len() {
-            new_idx += down
-        };
+            new_idx += down;
+        }
         self.sel_idx = new_idx;
         if self.sel_idx >= self.rows {
             self.top_idx = self.sel_idx - self.rows;
@@ -133,9 +133,9 @@ impl State {
             .enumerate()
             .fold(String::new(), |acc, (i, c)| {
                 if i != 0 {
-                    format!("{}.*?{}", acc, c)
+                    format!("{acc}.*?{c}")
                 } else {
-                    format!("{}{}", acc, c)
+                    format!("{acc}{c}")
                 }
             });
         let regex = RegexBuilder::new(&regex_str)
@@ -153,12 +153,12 @@ impl State {
     }
 
     fn do_lines(&mut self, lines: &str) -> BTreeMap<String, String> {
-        let init = self.default_projects();
+        let init = State::default_projects();
         eprintln!("Default Projects: {:?}", self.projects,);
-        return lines.lines().fold(init, |a, l| self.split(a, l));
+        lines.lines().fold(init, State::split)
     }
 
-    fn split(&mut self, mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
+    fn split(mut acc: BTreeMap<String, String>, line: &str) -> BTreeMap<String, String> {
         let re = Regex::new(r"^(?<path>.*\/(?<name>[^/]+))\/.git\/$").unwrap();
 
         match re.captures(line) {
@@ -170,7 +170,7 @@ impl State {
         }
     }
 
-    fn default_projects(&mut self) -> BTreeMap<String, String> {
+    fn default_projects() -> BTreeMap<String, String> {
         let mut projects = BTreeMap::new();
         projects.insert("default".into(), "/Users/idavies".into());
         projects.insert(
@@ -190,18 +190,18 @@ impl State {
                 }
             }
             Event::CustomMessage(message, payload) => {
-                eprintln!("custom_message: {:?} payload: {:?}", message, payload);
+                eprintln!("custom_message: {message:?} payload: {payload:?}");
                 should_render = false;
             }
             Event::Key(key) => {
-                should_render = self.handle_key(key);
+                should_render = self.handle_key(&key);
             }
             Event::ModeUpdate(mode_info) => {
                 match mode_info.session_name {
-                    Some(ref name) => eprintln!("mode_info: {:?}", name),
+                    Some(ref name) => eprintln!("mode_info: {name:?}"),
                     None => eprintln!("mode_info: missing"),
                 }
-                self.current_session = mode_info.session_name.clone();
+                self.current_session.clone_from(&mode_info.session_name);
                 should_render = true;
             }
             Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
@@ -209,7 +209,7 @@ impl State {
                     let mut v = match std::str::from_utf8(&stdin) {
                         Ok(val) => self.do_lines(val),
 
-                        Err(_) => self.default_projects(),
+                        Err(_) => State::default_projects(),
                     };
                     self.projects.append(&mut v);
                     self.update_filtered();
@@ -218,7 +218,7 @@ impl State {
                 should_render = true;
             }
             _ => (),
-        };
+        }
         should_render
     }
 }
@@ -233,7 +233,7 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
         eprintln!("Config: {:?}", self.userspace_configuration);
-        self.projects = self.default_projects();
+        self.projects = State::default_projects();
         self.filtered_projects = self.projects.keys().fold(BTreeSet::new(), |mut c, v| {
             c.insert(v.to_owned());
             c
@@ -241,7 +241,7 @@ impl ZellijPlugin for State {
         self.top_idx = 0;
         self.sel_idx = 0;
         self.selected = "default".to_string();
-        self.search_term = "".to_string();
+        self.search_term = String::new();
         self.rows = 10;
         self.cols = 40;
 
@@ -262,7 +262,7 @@ impl ZellijPlugin for State {
         ]);
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
-        eprintln!("pipe_message: {:?}", pipe_message);
+        eprintln!("pipe_message: {pipe_message:?}");
         true
     }
     fn update(&mut self, event: Event) -> bool {
@@ -310,15 +310,15 @@ impl ZellijPlugin for State {
             self.sel_idx,
             self.top_idx
         );
-        eprintln!("Defaults {:?}", self.default_projects());
+        eprintln!("Defaults {:?}", State::default_projects());
         for (i, p) in self.filtered_projects.iter().enumerate() {
             if i < self.rows {
                 if i == self.sel_idx {
-                    println!("{}", color_bold(GREEN, &format!("> {}", p).to_string()));
+                    println!("{}", color_bold(GREEN, &format!("> {p}").to_string()));
                 } else {
                     // we'll show self.rows items at a time - adjust for rows
                     if i >= self.top_idx && i < self.top_idx + self.rows {
-                        println!("{}", color_bold(WHITE, &format!("  {}", p).to_string()));
+                        println!("{}", color_bold(WHITE, &format!("  {p}").to_string()));
                     }
                 }
             }

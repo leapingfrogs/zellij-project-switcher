@@ -37,7 +37,8 @@ pub struct CoreState {
 }
 
 impl CoreState {
-    pub fn init(projects: BTreeMap<String, String>, current_session: String) -> CoreState {
+    #[must_use]
+    pub fn init(projects: &BTreeMap<String, String>, current_session: String) -> CoreState {
         let mut filtered_projects = projects.keys().cloned().collect::<BTreeSet<String>>();
         filtered_projects.remove(&current_session.clone());
         CoreState {
@@ -57,7 +58,7 @@ impl CoreState {
     pub fn update_search_term_backspace(&mut self) {
         if self.search_term.is_empty() {
             return;
-        };
+        }
         self.search_term.pop();
         self.update_filtered_projects();
     }
@@ -79,6 +80,7 @@ impl CoreState {
         self.update_filtered_projects();
     }
 
+    #[must_use]
     pub fn selected_item(&self) -> Option<String> {
         match self.selected_index {
             Some(index) => self.filtered_projects.clone().into_iter().nth(index),
@@ -122,9 +124,9 @@ impl CoreState {
             .enumerate()
             .fold(String::new(), |acc, (i, c)| {
                 if i != 0 {
-                    format!("{}.*?{}", acc, c)
+                    format!("{acc}.*?{c}")
                 } else {
-                    format!("{}{}", acc, c)
+                    format!("{acc}{c}")
                 }
             });
         RegexBuilder::new(&regex_str)
@@ -162,7 +164,7 @@ mod test {
 
         refresh_projects(&BTreeMap::new(), |c, _| {
             for item in c {
-                cmd.push(item.to_string());
+                cmd.push((*item).to_string());
             }
         });
         assert_eq!(cmd[..4], vec!["fd", "-Htd", "--max-depth=2", "^\\.git$"]);
@@ -174,7 +176,7 @@ mod test {
 
         refresh_projects(&BTreeMap::new(), |c, _| {
             for item in c {
-                cmd.push(item.to_string());
+                cmd.push((*item).to_string());
             }
         });
         assert_eq!(cmd[4..], vec!["~"]);
@@ -190,7 +192,7 @@ mod test {
         )]);
         refresh_projects(&config, |c, _| {
             for item in c {
-                cmd.push(item.to_string());
+                cmd.push((*item).to_string());
             }
         });
         assert_eq!(cmd[4..], vec!["~/personal_projects", "~/work_projects"]);
