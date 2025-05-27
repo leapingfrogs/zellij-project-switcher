@@ -16,7 +16,7 @@ bench = []
 tracing = []
 
 [dependencies]
-zellij-tile = "0.41.1"
+zellij-tile = "0.42.2"
 serde = "1.0.219"
 regex = "1.10.5"
 nu-ansi-term = "0.50.1"
