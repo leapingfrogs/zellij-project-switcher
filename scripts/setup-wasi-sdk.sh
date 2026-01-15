@@ -4,7 +4,7 @@
 
 set -e
 
-WASI_SDK_VERSION="25"
+WASI_SDK_VERSION="29"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 INSTALL_DIR="$PROJECT_DIR/.wasi-sdk"
@@ -12,10 +12,10 @@ INSTALL_DIR="$PROJECT_DIR/.wasi-sdk"
 # Detect platform
 case "$(uname -s)-$(uname -m)" in
     Linux-x86_64)
-        PLATFORM="linux"
+        PLATFORM="x86_64-linux"
         ;;
     Linux-aarch64)
-        PLATFORM="linux"
+        PLATFORM="arm64-linux"
         ;;
     Darwin-arm64)
         PLATFORM="arm64-macos"
@@ -44,7 +44,7 @@ if [ -d "$INSTALL_DIR" ] && [ -x "$INSTALL_DIR/bin/clang" ]; then
 fi
 
 echo "==> Downloading WASI SDK ${WASI_SDK_VERSION} for ${PLATFORM}..."
-curl -LO "$URL"
+curl -fsSL -o "$ARCHIVE" "$URL"
 
 echo "==> Extracting..."
 tar xzf "$ARCHIVE"
