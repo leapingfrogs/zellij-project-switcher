@@ -62,3 +62,16 @@ zellij action new-tab --layout ./plugin-dev-workspace.kdl
 1. Build the project: `cargo build`
 2. Load it inside a running Zellij session: `zellij action start-or-reload-plugin file:target/wasm32-wasi/debug/rust-plugin-example.wasm`
 3. Repeat on changes (perhaps with a `watchexec` or similar command to run on fs changes).
+
+## Releasing
+
+To release a new version:
+
+1. Update the version in `Cargo.toml`
+2. Commit the changes and push to main
+3. Create and push a git tag matching the version:
+   ```bash
+   git tag v0.x.x
+   git push origin v0.x.x
+   ```
+4. The GitHub Action will automatically build the wasm plugin and create a release with the artifact attached
