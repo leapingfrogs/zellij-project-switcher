@@ -21,6 +21,7 @@ struct State {
     current_session: Option<String>,
     pending_events: Vec<Event>,
     got_permissions: bool,
+    projects_loaded: bool,
 }
 
 impl State {
@@ -183,11 +184,8 @@ impl State {
     fn handle_event(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
-            Event::PermissionRequestResult(status) => {
-                if status == PermissionStatus::Granted {
-                    // perform an initial load of projects...
-                    self.refresh_projects();
-                }
+            Event::PermissionRequestResult(_status) => {
+                // Permissions handled in update() method
             }
             Event::CustomMessage(message, payload) => {
                 eprintln!("custom_message: {message:?} payload: {payload:?}");
@@ -214,6 +212,7 @@ impl State {
                     self.projects.append(&mut v);
                     self.update_filtered();
                     self.update_selected(0, 0);
+                    self.projects_loaded = true;
                 }
                 should_render = true;
             }
@@ -307,6 +306,12 @@ impl ZellijPlugin for State {
             color_bold(GREEN, &self.selected.to_string())
         );
         println!();
+
+        if !self.projects_loaded {
+            println!("{}", color_bold(CYAN, "Loading projects..."));
+            return;
+        }
+
         eprintln!(
             "Render {:?} projects... (sel: {:?}, top: {:?})",
             self.projects.len(),
