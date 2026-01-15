@@ -16,13 +16,13 @@ bench = []
 tracing = []
 
 [dependencies]
-zellij-tile = "0.42.2"
+zellij-tile = "0.43.1"
 serde = "1.0.228"
 regex = "1.12.2"
-nu-ansi-term = "0.50.1"
+nu-ansi-term = "0.50.3"
 
 [dev-dependencies]
-criterion = { version = "0.6.0", default-features = false, features = ["html_reports"] }
+criterion = { version = "0.8.1", default-features = false, features = ["html_reports"] }
 
 # [[bench]]
 # name = "benches"
