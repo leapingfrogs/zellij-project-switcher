@@ -17,9 +17,9 @@ tracing = []
 
 [dependencies]
 zellij-tile = "0.42.2"
-serde = "1.0.219"
-regex = "1.10.5"
-nu-ansi-term = "0.50.1"
+serde = "1.0.228"
+regex = "1.12.2"
+nu-ansi-term = "0.50.3"
 
 [dev-dependencies]
 criterion = { version = "0.6.0", default-features = false, features = ["html_reports"] }
