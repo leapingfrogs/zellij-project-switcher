@@ -287,7 +287,10 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        self.rows = rows - 3;
+        const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+        // Reserve 3 rows for header (blank, status, blank) and 1 for footer (version)
+        self.rows = rows.saturating_sub(4);
         self.cols = cols;
         self.update_selected(0, 0);
         println!();
@@ -311,18 +314,36 @@ impl ZellijPlugin for State {
             self.top_idx
         );
         eprintln!("Defaults {:?}", State::default_projects());
+
+        let mut lines_printed = 0;
         for (i, p) in self.filtered_projects.iter().enumerate() {
             if i < self.rows {
                 if i == self.sel_idx {
                     println!("{}", color_bold(GREEN, &format!("> {p}").to_string()));
+                    lines_printed += 1;
                 } else {
                     // we'll show self.rows items at a time - adjust for rows
                     if i >= self.top_idx && i < self.top_idx + self.rows {
                         println!("{}", color_bold(WHITE, &format!("  {p}").to_string()));
+                        lines_printed += 1;
                     }
                 }
             }
         }
+
+        // Fill remaining lines to push version to bottom
+        for _ in lines_printed..self.rows {
+            println!();
+        }
+
+        // Print version right-aligned at the bottom
+        let version_text = format!("v{}", VERSION);
+        let padding = cols.saturating_sub(version_text.len());
+        println!(
+            "{}{}",
+            " ".repeat(padding),
+            color_bold(GRAY_LIGHT, &version_text)
+        );
     }
 }
 
