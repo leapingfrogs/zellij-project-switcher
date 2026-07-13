@@ -4,6 +4,8 @@ This is an simple Zellij plugin that allows switching sessions between local git
 
 ## Dependencies
 
+This plugin requires Zellij 0.44 or newer (releases up to 0.2.x support Zellij 0.43).
+
 This plugin requires the `fd` command, see the [fd github project](https://github.com/sharkdp/fd?tab=readme-ov-file#installation) for more
 information and installation details.
 

@@ -1,3 +1,7 @@
+// register_plugin! is cfg(not(test)), so in the bin's own test build nothing
+// constructs State and everything below counts as dead code.
+#![cfg_attr(test, allow(dead_code))]
+
 use nu_ansi_term::{Color::Fixed, Style};
 use zellij_tile::prelude::*;
 
@@ -155,7 +159,7 @@ impl State {
 
     fn do_lines(&mut self, lines: &str) -> BTreeMap<String, String> {
         let init = State::default_projects();
-        eprintln!("Default Projects: {:?}", self.projects,);
+        eprintln!("Default Projects: {:?}", self.projects);
         lines.lines().fold(init, State::split)
     }
 
@@ -302,8 +306,8 @@ impl ZellijPlugin for State {
                     .clone()
                     .unwrap_or("<unknown>".to_string())
             ),
-            color_bold(ORANGE, &self.search_term.to_string()),
-            color_bold(GREEN, &self.selected.to_string())
+            color_bold(ORANGE, &self.search_term),
+            color_bold(GREEN, &self.selected)
         );
         println!();
 
@@ -342,7 +346,7 @@ impl ZellijPlugin for State {
         }
 
         // Print version right-aligned at the bottom
-        let version_text = format!("v{}", VERSION);
+        let version_text = format!("v{VERSION}");
         let padding = cols.saturating_sub(version_text.len());
         println!(
             "{}{}",
