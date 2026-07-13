@@ -8,8 +8,16 @@ use zellij_tile::prelude::*;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use zellij_project_switcher_plugin::core;
+use zellij_project_switcher_plugin::stack;
+
+// Lives in the plugin's /cache mount: keyed by plugin URL, shared across
+// sessions, and persistent — one MRU stack for all instances.
+const STACK_PATH: &str = "/cache/session-stack.v1";
+const TOGGLE_DEBOUNCE_PATH: &str = "/cache/session-stack-toggle.claim";
+const TOGGLE_MESSAGE: &str = "toggle_session";
 
 #[derive(Default)]
 struct State {
@@ -26,6 +34,13 @@ struct State {
     pending_events: Vec<Event>,
     got_permissions: bool,
     projects_loaded: bool,
+    // Session-stack tracking (see src/stack.rs). own_session/own_connected
+    // come from SessionUpdate's is_current_session entry, independent of the
+    // ModeUpdate-driven current_session used by the UI.
+    own_session: Option<String>,
+    own_connected: Option<usize>,
+    live_sessions: BTreeSet<String>,
+    tracker_mode: bool,
 }
 
 impl State {
@@ -51,6 +66,12 @@ impl State {
                 {
                     eprintln!("Refusing to launch current session");
                 } else {
+                    // Eager push so the stack is correct even if the target
+                    // session's attach snapshot lags behind the switch.
+                    let mut stack = stack::read_stack(Path::new(STACK_PATH));
+                    if stack.push_top(&self.selected) {
+                        stack::write_stack(Path::new(STACK_PATH), &stack);
+                    }
                     hide_self();
                     switch_session_with_layout(
                         Some(self.selected.as_str()),
@@ -185,6 +206,56 @@ impl State {
         projects
     }
 
+    /// Cmd-Tab-style toggle: switch to the most recent live session that
+    /// isn't the current one. Silent no-op when there is nowhere to go.
+    ///
+    /// Deliberately stateless: everything is derived from a fresh
+    /// `get_session_list()` snapshot so the handler is correct even in a
+    /// freshly-launched instance that has not yet seen a `SessionUpdate`.
+    /// (The `SessionUpdate` event only carries other sessions after
+    /// something has called `get_session_list` — zellij 0.44 has no
+    /// periodic machine-wide scan.)
+    fn toggle_session(&mut self) {
+        let snapshot = match get_session_list() {
+            Ok(snapshot) => snapshot,
+            Err(e) => {
+                eprintln!("toggle_session: get_session_list failed: {e}");
+                return;
+            }
+        };
+        let Some(own) = snapshot.live_sessions.iter().find(|s| s.is_current_session) else {
+            return;
+        };
+        // Guard: pipes can reach instances of this plugin in every session
+        // (CLI pipes are machine-wide); only an instance in a session the
+        // user is attached to may act.
+        if own.connected_clients == 0 && self.own_connected.unwrap_or(0) == 0 {
+            return;
+        }
+        // Debounce across instances: a broadcast pipe reaches several
+        // trackers moments apart, and the target session's copy could
+        // otherwise observe the first copy's switch and bounce the client
+        // straight back.
+        if !stack::claim_toggle_slot(Path::new(TOGGLE_DEBOUNCE_PATH)) {
+            return;
+        }
+        let current = own.name.clone();
+        let live: BTreeSet<String> = snapshot
+            .live_sessions
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        let mut stack = stack::read_stack(Path::new(STACK_PATH));
+        if stack.prune(&live) {
+            stack::write_stack(Path::new(STACK_PATH), &stack);
+        }
+        if let Some(target) = stack.toggle_target(&current, &live) {
+            stack.push_top(&target);
+            stack::write_stack(Path::new(STACK_PATH), &stack);
+            switch_session(Some(&target));
+        }
+    }
+
     fn handle_event(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
@@ -205,6 +276,35 @@ impl State {
                 }
                 self.current_session.clone_from(&mode_info.session_name);
                 should_render = true;
+            }
+            Event::SessionUpdate(infos, _resurrectable) => {
+                self.live_sessions = infos.iter().map(|s| s.name.clone()).collect();
+                if let Some(own) = infos.iter().find(|s| s.is_current_session) {
+                    // Session renamed: keep the stack entry's position.
+                    if let Some(prev) = &self.own_session {
+                        if prev != &own.name {
+                            let mut stack = stack::read_stack(Path::new(STACK_PATH));
+                            if stack.rename(prev, &own.name) {
+                                stack::write_stack(Path::new(STACK_PATH), &stack);
+                            }
+                        }
+                    }
+                    // Any increase in our own client count is an attach —
+                    // including the first snapshot while already attached —
+                    // and moves this session to the top of the stack.
+                    let attached = match self.own_connected {
+                        Some(prev) => own.connected_clients > prev,
+                        None => own.connected_clients > 0,
+                    };
+                    if attached {
+                        let mut stack = stack::read_stack(Path::new(STACK_PATH));
+                        if stack.push_top(&own.name) {
+                            stack::write_stack(Path::new(STACK_PATH), &stack);
+                        }
+                    }
+                    self.own_connected = Some(own.connected_clients);
+                    self.own_session = Some(own.name.clone());
+                }
             }
             Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
                 if status == 0 {
@@ -236,6 +336,27 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.userspace_configuration = configuration;
         eprintln!("Config: {:?}", self.userspace_configuration);
+        self.tracker_mode = self
+            .userspace_configuration
+            .get("mode")
+            .is_some_and(|m| m == "tracker");
+        if self.tracker_mode {
+            // Headless instance (loaded via load_plugins): only track the
+            // session stack — no UI, no project discovery. Subscribe before
+            // requesting permissions: a background instance has no pane to
+            // show the permission dialog in (zellij #4982), so it relies on
+            // the cached grant from the visible instance's one-time approval
+            // and must not block event delivery on a dialog round-trip.
+            subscribe(&[
+                EventType::SessionUpdate,
+                EventType::PermissionRequestResult,
+            ]);
+            request_permission(&[
+                PermissionType::ReadApplicationState,
+                PermissionType::ChangeApplicationState,
+            ]);
+            return;
+        }
         self.projects = State::default_projects();
         self.filtered_projects = self.projects.keys().fold(BTreeSet::new(), |mut c, v| {
             c.insert(v.to_owned());
@@ -261,14 +382,31 @@ impl ZellijPlugin for State {
             EventType::Key,
             EventType::CustomMessage,
             EventType::RunCommandResult,
+            EventType::SessionUpdate,
             EventType::PermissionRequestResult,
         ]);
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         eprintln!("pipe_message: {pipe_message:?}");
-        true
+        // CLI pipes deliver the payload message and then a payload-less
+        // end-of-pipe marker; only the first may trigger the toggle.
+        let actionable = match pipe_message.source {
+            PipeSource::Keybind => true,
+            PipeSource::Cli(_) => pipe_message.payload.is_some(),
+            PipeSource::Plugin(_) => false,
+        };
+        if actionable && pipe_message.name == TOGGLE_MESSAGE {
+            self.toggle_session();
+        }
+        false
     }
     fn update(&mut self, event: Event) -> bool {
+        if self.tracker_mode {
+            // No permission gate here: events are only delivered when the
+            // cached grant is in place, and the tracker runs no commands.
+            return self.handle_event(event);
+        }
+
         if let Event::PermissionRequestResult(PermissionStatus::Granted) = event {
             self.got_permissions = true;
 
@@ -278,7 +416,9 @@ impl ZellijPlugin for State {
             }
 
             // perform an initial load of projects...
-            self.refresh_projects();
+            if !self.tracker_mode {
+                self.refresh_projects();
+            }
         }
 
         if !self.got_permissions {

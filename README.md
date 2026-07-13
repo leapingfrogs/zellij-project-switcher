@@ -33,6 +33,65 @@ you checkout git repositories, as this helps keep the performance up. Internally
 repositories. You will need to first install that for the plugin to run, see [dependencies](#dependencies).
 
 
+## Session stack & toggle (Cmd-Tab for sessions)
+
+The plugin maintains a most-recently-used stack of sessions in a file shared by
+all of its instances (`/cache/session-stack.v1`, backed by
+`~/.cache/zellij/<plugin-url>/plugin_cache/` on the host, so it survives
+restarts). Whenever a session gains a client — via this plugin's menu, the
+built-in session-manager, or `zellij attach` — that session moves to the top of
+the stack.
+
+The `toggle_session` command switches to the previous session in the stack, so
+pressing it repeatedly bounces between your two most recent sessions, like
+Cmd-Tab on macOS.
+
+Two pieces of configuration are needed. First, load a background tracker
+instance in every session so switches made outside the plugin are recorded:
+
+```kdl
+load_plugins {
+    "https://github.com/leapingfrogs/zellij-project-switcher/releases/latest/download/zellij-project-switcher-plugin.wasm" {
+        mode "tracker"
+    }
+}
+```
+
+Second, bind a key that pipes the toggle command to the tracker:
+
+```kdl
+keybinds {
+    shared_except "locked" {
+        bind "Ctrl y" {
+            MessagePlugin "https://github.com/leapingfrogs/zellij-project-switcher/releases/latest/download/zellij-project-switcher-plugin.wasm" {
+                name "toggle_session"
+                mode "tracker"
+            }
+        }
+    }
+}
+```
+
+Notes:
+
+- **The plugin URL and the `mode "tracker"` line must be byte-identical in
+  both places.** Zellij identifies plugin instances by URL *plus*
+  configuration; a mismatch makes the keybind launch a separate instance
+  instead of messaging the tracker.
+- On the first session after adding `load_plugins`, Zellij shows a one-time
+  permission prompt for the tracker (it needs to read application state and
+  switch sessions). The grant is cached per plugin URL.
+- The toggle can also be invoked from a terminal (note the payload argument —
+  without one the CLI only sends an end-of-pipe marker, which is ignored):
+
+  ```bash
+  zellij pipe --plugin <same-url> --plugin-configuration "mode=tracker" --name toggle_session -- go
+  ```
+- With multiple clients attached to different sessions simultaneously,
+  toggling from two sessions at nearly the same moment can race; the plugin
+  debounces toggles within 500ms machine-wide. Single-client use — the normal
+  case — is unaffected.
+
 ## Development
 
 *Note*: you will need to have `wasm32-wasi` added to rust as a target to build the plugin. This can be done with `rustup target add wasm32-wasi`.
