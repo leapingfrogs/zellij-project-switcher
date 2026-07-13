@@ -351,9 +351,16 @@ impl ZellijPlugin for State {
                 EventType::SessionUpdate,
                 EventType::PermissionRequestResult,
             ]);
+            // Must request the SAME permission set as the UI mode below, even
+            // though the tracker never runs commands: zellij rewrites the
+            // cached grant with exactly the requested set on every load
+            // (including silent cached grants), so requesting a subset here
+            // would strip RunCommands from the cache each time a session
+            // starts and re-prompt on the next UI open, forever.
             request_permission(&[
                 PermissionType::ReadApplicationState,
                 PermissionType::ChangeApplicationState,
+                PermissionType::RunCommands,
             ]);
             return;
         }
