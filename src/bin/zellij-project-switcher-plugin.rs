@@ -71,6 +71,11 @@ impl State {
                     let mut stack = stack::read_stack(Path::new(STACK_PATH));
                     if stack.push_top(&self.selected) {
                         stack::write_stack(Path::new(STACK_PATH), &stack);
+                        eprintln!(
+                            "stack: menu-enter pushed {:?}; stack now {:?}",
+                            self.selected,
+                            stack.entries()
+                        );
                     }
                     hide_self();
                     switch_session_with_layout(
@@ -219,17 +224,35 @@ impl State {
         let snapshot = match get_session_list() {
             Ok(snapshot) => snapshot,
             Err(e) => {
-                eprintln!("toggle_session: get_session_list failed: {e}");
+                eprintln!("toggle: get_session_list failed: {e}");
                 return;
             }
         };
+        let seen: Vec<String> = snapshot
+            .live_sessions
+            .iter()
+            .map(|s| {
+                format!(
+                    "{}(clients:{}{})",
+                    s.name,
+                    s.connected_clients,
+                    if s.is_current_session { ",own" } else { "" }
+                )
+            })
+            .collect();
+        eprintln!("toggle: snapshot {seen:?}");
         let Some(own) = snapshot.live_sessions.iter().find(|s| s.is_current_session) else {
+            eprintln!("toggle: no-op — own session missing from snapshot");
             return;
         };
         // Guard: pipes can reach instances of this plugin in every session
         // (CLI pipes are machine-wide); only an instance in a session the
         // user is attached to may act.
         if own.connected_clients == 0 && self.own_connected.unwrap_or(0) == 0 {
+            eprintln!(
+                "toggle: no-op — no client attached here (snapshot clients: 0, tracked: {:?})",
+                self.own_connected
+            );
             return;
         }
         // Debounce across instances: a broadcast pipe reaches several
@@ -237,6 +260,10 @@ impl State {
         // otherwise observe the first copy's switch and bounce the client
         // straight back.
         if !stack::claim_toggle_slot(Path::new(TOGGLE_DEBOUNCE_PATH)) {
+            eprintln!(
+                "toggle: no-op — debounced (another toggle ran within {}ms)",
+                stack::TOGGLE_DEBOUNCE_MS
+            );
             return;
         }
         let current = own.name.clone();
@@ -246,13 +273,24 @@ impl State {
             .map(|s| s.name.clone())
             .collect();
         let mut stack = stack::read_stack(Path::new(STACK_PATH));
+        eprintln!(
+            "toggle: current {current:?}, stack {:?}",
+            stack.entries()
+        );
         if stack.prune(&live) {
             stack::write_stack(Path::new(STACK_PATH), &stack);
+            eprintln!("toggle: pruned dead entries; stack now {:?}", stack.entries());
         }
         if let Some(target) = stack.toggle_target(&current, &live) {
             stack.push_top(&target);
             stack::write_stack(Path::new(STACK_PATH), &stack);
+            eprintln!(
+                "toggle: switching to {target:?}; stack now {:?}",
+                stack.entries()
+            );
             switch_session(Some(&target));
+        } else {
+            eprintln!("toggle: no-op — no live toggle target in stack");
         }
     }
 
@@ -286,6 +324,11 @@ impl State {
                             let mut stack = stack::read_stack(Path::new(STACK_PATH));
                             if stack.rename(prev, &own.name) {
                                 stack::write_stack(Path::new(STACK_PATH), &stack);
+                                eprintln!(
+                                    "stack: renamed {prev:?} -> {:?}; stack now {:?}",
+                                    own.name,
+                                    stack.entries()
+                                );
                             }
                         }
                     }
@@ -300,6 +343,13 @@ impl State {
                         let mut stack = stack::read_stack(Path::new(STACK_PATH));
                         if stack.push_top(&own.name) {
                             stack::write_stack(Path::new(STACK_PATH), &stack);
+                            eprintln!(
+                                "stack: attach pushed {:?} (clients {:?} -> {}); stack now {:?}",
+                                own.name,
+                                self.own_connected,
+                                own.connected_clients,
+                                stack.entries()
+                            );
                         }
                     }
                     self.own_connected = Some(own.connected_clients);
