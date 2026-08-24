@@ -23,7 +23,7 @@ codegen-units = 1
 strip = true
 
 [dependencies]
-zellij-tile = "0.44.3"
+zellij-tile = "0.45.0"
 serde = "1.0.228"
 regex = "1.13.0"
 nu-ansi-term = "0.50.3"
