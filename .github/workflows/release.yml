@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Setup `wasmtime`
       uses: bytecodealliance/actions/wasmtime/setup@v1
     - name: Install cargo-wasip1
@@ -22,7 +22,7 @@ jobs:
     - name: Build
       run: cargo build --target wasm32-wasip1 --release --features tracing
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       if: startswith(github.ref, 'refs/tags/')
       with:
         files: target/wasm32-wasip1/release/zellij-project-switcher-plugin.wasm
