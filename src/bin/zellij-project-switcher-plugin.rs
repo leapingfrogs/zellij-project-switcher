@@ -41,6 +41,9 @@ struct State {
     own_connected: Option<usize>,
     live_sessions: BTreeSet<String>,
     tracker_mode: bool,
+    // A toggle_session pipe waiting for the ListClients reply that says
+    // whether this instance's client is still attached (see pipe()).
+    toggle_pending: bool,
 }
 
 impl State {
@@ -315,6 +318,19 @@ impl State {
                 self.current_session.clone_from(&mode_info.session_name);
                 should_render = true;
             }
+            Event::ListClients(clients) => {
+                // is_current_client is true only for this instance's own
+                // client, and only while it is attached (detached clients
+                // are dropped from the panes the list is built from).
+                if self.toggle_pending {
+                    self.toggle_pending = false;
+                    if clients.iter().any(|c| c.is_current_client) {
+                        self.toggle_session();
+                    } else {
+                        eprintln!("toggle: no-op — this instance's client is not attached");
+                    }
+                }
+            }
             Event::SessionUpdate(infos, _resurrectable) => {
                 self.live_sessions = infos.iter().map(|s| s.name.clone()).collect();
                 if let Some(own) = infos.iter().find(|s| s.is_current_session) {
@@ -399,6 +415,7 @@ impl ZellijPlugin for State {
             // and must not block event delivery on a dialog round-trip.
             subscribe(&[
                 EventType::SessionUpdate,
+                EventType::ListClients,
                 EventType::PermissionRequestResult,
             ]);
             // Must request the SAME permission set as the UI mode below, even
@@ -440,6 +457,7 @@ impl ZellijPlugin for State {
             EventType::CustomMessage,
             EventType::RunCommandResult,
             EventType::SessionUpdate,
+            EventType::ListClients,
             EventType::PermissionRequestResult,
         ]);
     }
@@ -452,8 +470,16 @@ impl ZellijPlugin for State {
             PipeSource::Cli(_) => pipe_message.payload.is_some(),
             PipeSource::Plugin(_) => false,
         };
+        // Zellij creates an instance of every running plugin for each client
+        // that attaches and never drops it when the client leaves, so a pipe
+        // reaches one instance per client that has ever been here, and
+        // switch_session() moves only the instance's own client. Ask which
+        // clients are attached and toggle from the ListClients reply, so an
+        // instance whose client has gone neither switches nobody nor claims
+        // the debounce slot ahead of the live client's instance.
         if actionable && pipe_message.name == TOGGLE_MESSAGE {
-            self.toggle_session();
+            self.toggle_pending = true;
+            list_clients();
         }
         false
     }

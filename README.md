@@ -87,6 +87,10 @@ Notes:
   ```bash
   zellij pipe --plugin <same-url> --plugin-configuration "mode=tracker" --name toggle_session -- go
   ```
+- Zellij runs one tracker instance per client that has ever attached to a
+  session (it never drops them on detach), and a plugin can only switch its
+  own client. Each instance therefore checks `list_clients()` first and acts
+  only if its own client is still attached.
 - With multiple clients attached to different sessions simultaneously,
   toggling from two sessions at nearly the same moment can race; the plugin
   debounces toggles within 500ms machine-wide. Single-client use — the normal
