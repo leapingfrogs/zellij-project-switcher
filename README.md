@@ -33,6 +33,14 @@ you checkout git repositories, as this helps keep the performance up. Internally
 repositories. You will need to first install that for the plugin to run, see [dependencies](#dependencies).
 
 
+## Active sessions
+
+Running Zellij sessions are listed first, sorted alphabetically and shown in
+orange with a `●`, followed by the other projects. The session you are in is
+left out of the list. Sessions that aren't in a project under `roots` are
+included too, and selecting a running session attaches to it. Exited sessions
+aren't treated as active.
+
 ## Session stack & toggle (Cmd-Tab for sessions)
 
 The plugin maintains a most-recently-used stack of sessions in a file shared by

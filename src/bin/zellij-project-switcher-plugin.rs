@@ -23,10 +23,13 @@ const TOGGLE_MESSAGE: &str = "toggle_session";
 struct State {
     userspace_configuration: BTreeMap<String, String>,
     projects: BTreeMap<String, String>,
-    filtered_projects: BTreeSet<String>,
+    entries: Vec<core::PickerEntry>,
     top_idx: usize,
     sel_idx: usize,
     selected: String,
+    // Set once the user moves the selection. Until then it stays on the first
+    // row, however the list reorders as projects and sessions arrive.
+    selection_pinned: bool,
     search_term: String,
     rows: usize,
     cols: usize,
@@ -61,31 +64,28 @@ impl State {
                 .get("layout")
                 .unwrap_or(&default);
 
-            if let Some(cwd) = self.projects.get(&self.selected) {
-                if self
-                    .current_session
-                    .clone()
-                    .is_some_and(|cs| cs.eq(&self.selected))
-                {
-                    eprintln!("Refusing to launch current session");
-                } else {
-                    // Eager push so the stack is correct even if the target
-                    // session's attach snapshot lags behind the switch.
-                    let mut stack = stack::read_stack(Path::new(STACK_PATH));
-                    if stack.push_top(&self.selected) {
-                        stack::write_stack(Path::new(STACK_PATH), &stack);
-                        eprintln!(
-                            "stack: menu-enter pushed {:?}; stack now {:?}",
-                            self.selected,
-                            stack.entries()
-                        );
-                    }
-                    hide_self();
-                    switch_session_with_layout(
-                        Some(self.selected.as_str()),
+            if let Some(entry) = self.entries.get(self.sel_idx) {
+                // Eager push so the stack is correct even if the target
+                // session's attach snapshot lags behind the switch.
+                let mut stack = stack::read_stack(Path::new(STACK_PATH));
+                if stack.push_top(&entry.name) {
+                    stack::write_stack(Path::new(STACK_PATH), &stack);
+                    eprintln!(
+                        "stack: menu-enter pushed {:?}; stack now {:?}",
+                        entry.name,
+                        stack.entries()
+                    );
+                }
+                hide_self();
+                // A running session is simply attached to, and may have no
+                // project. Anything else is a project, so it gets a new session.
+                match self.projects.get(&entry.name).filter(|_| !entry.active) {
+                    Some(cwd) => switch_session_with_layout(
+                        Some(entry.name.as_str()),
                         LayoutInfo::BuiltIn(layout.into()),
                         Some(cwd.into()),
-                    );
+                    ),
+                    None => switch_session(Some(entry.name.as_str())),
                 }
             }
             return true;
@@ -100,12 +100,12 @@ impl State {
         }
         if let BareKey::Down = key.bare_key {
             eprintln!("Down");
-            self.update_selected(1, 0);
+            self.move_selection(true);
             return true;
         }
         if let BareKey::Up = key.bare_key {
             eprintln!("Up");
-            self.update_selected(0, 1);
+            self.move_selection(false);
             return true;
         }
         if let BareKey::Char(char) = key.bare_key {
@@ -119,57 +119,66 @@ impl State {
     pub fn update_search_term(&mut self, character: char) {
         self.search_term.push(character);
         self.update_filtered();
-        self.update_selected(0, 0);
     }
 
     pub fn handle_backspace(&mut self) {
-        if self.search_term.is_empty() {
-            self.update_filtered();
-            self.update_selected(0, 0);
-        } else {
-            self.search_term.pop();
-            self.update_filtered();
-            self.update_selected(0, 0);
-        }
+        self.search_term.pop();
+        self.update_filtered();
     }
 
-    pub fn update_selected(&mut self, down: usize, up: usize) {
-        let mut new_idx = if self.sel_idx >= self.filtered_projects.len() {
-            if self.filtered_projects.is_empty() {
-                0
-            } else {
-                self.filtered_projects.len() - 1
-            }
+    fn move_selection(&mut self, down: bool) {
+        let last = self.entries.len().saturating_sub(1);
+        self.sel_idx = if down {
+            (self.sel_idx + 1).min(last)
         } else {
-            self.sel_idx
+            self.sel_idx.saturating_sub(1)
         };
-        if new_idx > 0 {
-            new_idx -= up;
-        }
-        if new_idx < self.filtered_projects.len() {
-            new_idx += down;
-        }
-        self.sel_idx = new_idx;
-        if self.sel_idx >= self.rows {
-            self.top_idx = self.sel_idx - self.rows;
-        } else {
-            self.top_idx = 0;
-        }
-        if let Some(k) = self.filtered_projects.iter().nth(self.sel_idx) {
-            self.selected.clone_from(k);
-        }
+        self.selection_pinned = !self.entries.is_empty();
+        self.sync_selected();
     }
 
+    /// Rebuild the list. A row the user moved to stays selected wherever it
+    /// lands; otherwise the selection goes to the first row.
     pub fn update_filtered(&mut self) {
-        let regex = core::search_regex(&self.search_term);
-        self.filtered_projects =
-            self.projects
-                .keys()
-                .filter(|p| regex.is_match(p))
-                .fold(BTreeSet::new(), |mut c, v| {
-                    c.insert(v.to_owned());
-                    c
-                });
+        self.entries = core::picker_entries(
+            &self.projects,
+            &self.live_sessions,
+            self.current_session
+                .as_deref()
+                .or(self.own_session.as_deref()),
+            &self.search_term,
+        );
+        let kept = if self.selection_pinned {
+            self.entries.iter().position(|e| e.name == self.selected)
+        } else {
+            None
+        };
+        self.selection_pinned = kept.is_some();
+        self.sel_idx = kept.unwrap_or(0);
+        self.sync_selected();
+    }
+
+    fn sync_selected(&mut self) {
+        self.selected = self
+            .entries
+            .get(self.sel_idx)
+            .map_or_else(String::new, |e| e.name.clone());
+    }
+
+    /// Fetch running sessions now: the `SessionUpdate` event only carries other
+    /// sessions after something has called `get_session_list`.
+    fn refresh_sessions(&mut self) {
+        match get_session_list() {
+            Ok(snapshot) => {
+                self.live_sessions = snapshot
+                    .live_sessions
+                    .iter()
+                    .map(|s| s.name.clone())
+                    .collect();
+                self.update_filtered();
+            }
+            Err(e) => eprintln!("picker: get_session_list failed: {e}"),
+        }
     }
 
     fn do_lines(&mut self, lines: &str) -> BTreeMap<String, String> {
@@ -302,6 +311,13 @@ impl State {
                     None => eprintln!("mode_info: missing"),
                 }
                 self.current_session.clone_from(&mode_info.session_name);
+                self.update_filtered();
+                should_render = true;
+            }
+            Event::Visible(true) => {
+                // The picker stays loaded while hidden, so sessions may have
+                // started or stopped since it was last shown.
+                self.refresh_sessions();
                 should_render = true;
             }
             Event::ListClients(clients) => {
@@ -357,6 +373,10 @@ impl State {
                     self.own_connected = Some(own.connected_clients);
                     self.own_session = Some(own.name.clone());
                 }
+                if !self.tracker_mode {
+                    self.update_filtered();
+                    should_render = true;
+                }
             }
             Event::RunCommandResult(Some(status), stdin, _stdout, _data) => {
                 if status == 0 {
@@ -367,7 +387,6 @@ impl State {
                     };
                     self.projects.append(&mut v);
                     self.update_filtered();
-                    self.update_selected(0, 0);
                     self.projects_loaded = true;
                 }
                 should_render = true;
@@ -418,14 +437,9 @@ impl ZellijPlugin for State {
             return;
         }
         self.projects = State::default_projects();
-        self.filtered_projects = self.projects.keys().fold(BTreeSet::new(), |mut c, v| {
-            c.insert(v.to_owned());
-            c
-        });
         self.top_idx = 0;
-        self.sel_idx = 0;
-        self.selected = "default".to_string();
         self.search_term = String::new();
+        self.update_filtered();
         self.rows = 10;
         self.cols = 40;
 
@@ -445,6 +459,7 @@ impl ZellijPlugin for State {
             EventType::SessionUpdate,
             EventType::ListClients,
             EventType::PermissionRequestResult,
+            EventType::Visible,
         ]);
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
@@ -487,6 +502,7 @@ impl ZellijPlugin for State {
             // perform an initial load of projects...
             if !self.tracker_mode {
                 self.refresh_projects();
+                self.refresh_sessions();
             }
         }
 
@@ -504,7 +520,7 @@ impl ZellijPlugin for State {
         // Reserve 3 rows for header (blank, status, blank) and 1 for footer (version)
         self.rows = rows.saturating_sub(4);
         self.cols = cols;
-        self.update_selected(0, 0);
+        self.top_idx = core::scroll_top(self.top_idx, self.sel_idx, self.rows, self.entries.len());
         println!();
         println!(
             "Current: [{}] :: Filter: [{}] :: Open project: [{}]?",
@@ -534,19 +550,28 @@ impl ZellijPlugin for State {
         eprintln!("Defaults {:?}", State::default_projects());
 
         let mut lines_printed = 0;
-        for (i, p) in self.filtered_projects.iter().enumerate() {
-            if i < self.rows {
-                if i == self.sel_idx {
-                    println!("{}", color_bold(GREEN, &format!("> {p}").to_string()));
-                    lines_printed += 1;
-                } else {
-                    // we'll show self.rows items at a time - adjust for rows
-                    if i >= self.top_idx && i < self.top_idx + self.rows {
-                        println!("{}", color_bold(WHITE, &format!("  {p}").to_string()));
-                        lines_printed += 1;
-                    }
-                }
-            }
+        for (i, entry) in self
+            .entries
+            .iter()
+            .enumerate()
+            .skip(self.top_idx)
+            .take(self.rows)
+        {
+            let selected = i == self.sel_idx;
+            let color = if selected {
+                GREEN
+            } else if entry.active {
+                ORANGE
+            } else {
+                WHITE
+            };
+            let prefix = if selected { ">" } else { " " };
+            let marker = if entry.active { "● " } else { "" };
+            println!(
+                "{}",
+                color_bold(color, &format!("{prefix} {marker}{}", entry.name))
+            );
+            lines_printed += 1;
         }
 
         // Fill remaining lines to push version to bottom
@@ -577,4 +602,94 @@ pub const ORANGE: u8 = 166;
 
 fn color_bold(color: u8, text: &str) -> String {
     format!("{}", Style::new().fg(Fixed(color)).bold().paint(text))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn picker(projects: &[&str], live: &[&str], current: &str) -> State {
+        let mut state = State {
+            projects: projects
+                .iter()
+                .map(|n| ((*n).to_string(), format!("/src/{n}")))
+                .collect(),
+            live_sessions: live.iter().map(|n| (*n).to_string()).collect(),
+            current_session: Some(current.to_string()),
+            ..State::default()
+        };
+        state.update_filtered();
+        state
+    }
+
+    #[test]
+    fn it_selects_the_first_row_until_the_user_moves() {
+        let mut state = picker(&["alpha", "beta"], &[], "main");
+        assert_eq!(state.selected, "alpha");
+
+        state.live_sessions.insert("zeta".to_string());
+        state.update_filtered();
+
+        assert_eq!(state.sel_idx, 0);
+        assert_eq!(state.selected, "zeta");
+    }
+
+    #[test]
+    fn it_keeps_a_chosen_row_selected_when_the_list_reorders() {
+        let mut state = picker(&["alpha", "beta"], &[], "main");
+        state.move_selection(true);
+        assert_eq!(state.selected, "beta");
+
+        state.live_sessions.insert("zeta".to_string());
+        state.update_filtered();
+
+        assert_eq!(state.selected, "beta");
+        assert_eq!(state.sel_idx, 2);
+    }
+
+    #[test]
+    fn it_returns_to_the_first_row_when_the_chosen_row_is_filtered_out() {
+        let mut state = picker(&["alpha", "beta"], &[], "main");
+        state.move_selection(true);
+
+        state.update_search_term('a');
+        state.update_search_term('l');
+
+        assert_eq!(state.selected, "alpha");
+        assert!(!state.selection_pinned);
+    }
+
+    #[test]
+    fn it_clears_the_selection_when_nothing_matches() {
+        let mut state = picker(&["alpha"], &[], "main");
+
+        state.update_search_term('q');
+
+        assert_eq!(state.entries, []);
+        assert_eq!(state.selected, "");
+    }
+
+    #[test]
+    fn it_stops_moving_at_either_end_of_the_list() {
+        let mut state = picker(&["alpha", "beta"], &[], "main");
+
+        state.move_selection(false);
+        assert_eq!(state.sel_idx, 0);
+
+        state.move_selection(true);
+        state.move_selection(true);
+        assert_eq!(state.sel_idx, 1);
+    }
+
+    #[test]
+    fn it_drops_the_current_session_once_it_is_known() {
+        let mut state = picker(&["alpha", "nixos"], &["nixos"], "other");
+        assert_eq!(state.selected, "nixos");
+
+        state.current_session = Some("nixos".to_string());
+        state.update_filtered();
+
+        assert_eq!(state.selected, "alpha");
+        assert_eq!(state.entries.len(), 1);
+    }
 }
