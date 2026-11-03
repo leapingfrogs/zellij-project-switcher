@@ -132,11 +132,21 @@ zellij action new-tab --layout ./plugin-dev-workspace.kdl
 
 To release a new version:
 
-1. Update the version in `Cargo.toml`
-2. Commit the changes and push to main
-3. Create and push a git tag matching the version:
+1. Update the version in `Cargo.toml` and run `cargo check` to update `Cargo.lock`
+2. Commit both files and push to main. The release builds with `--locked`, so it fails if `Cargo.lock` is out of date
+3. Once CI passes on main, create and push a git tag matching the version. Only repository admins can create `v*` tags:
    ```bash
    git tag v0.x.x
    git push origin v0.x.x
    ```
-4. The GitHub Action will automatically build the wasm plugin and create a release with the artifact attached
+4. The GitHub Action will automatically run the tests, build the wasm plugin, attest its build provenance and create a release with the artifact attached
+
+Releases are immutable once published, so a bad release needs a new version number. If the workflow fails before publishing, fix the problem, delete the tag and tag again.
+
+## Verifying a release
+
+Release builds from v0.3.5 onwards have a signed build provenance attestation. Zellij doesn't check it when loading a plugin, but you can check a downloaded file with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify zellij-project-switcher-plugin.wasm --repo leapingfrogs/zellij-project-switcher
+```
