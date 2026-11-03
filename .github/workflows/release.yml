@@ -5,24 +5,48 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  test:
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
     - name: Setup `wasmtime`
-      uses: bytecodealliance/actions/wasmtime/setup@v1
-    - name: Install cargo-wasip1
+      uses: bytecodealliance/actions/wasmtime/setup@9152e710e9f7182e4c29ad218e4f335a7b203613 # v1.1.3
+    - name: Add wasm32-wasip1 target
+      run: rustup target add wasm32-wasip1
+    - name: Run tests
+      run: cargo test --locked --target wasm32-wasip1
+
+  build:
+    needs: test
+
+    runs-on: ubuntu-latest
+
+    # The only job that can write to the repository, so it runs no more
+    # third-party code than publishing requires.
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Add wasm32-wasip1 target
       run: rustup target add wasm32-wasip1
     - name: Build
-      run: cargo build --target wasm32-wasip1 --release --features tracing
+      run: cargo build --locked --target wasm32-wasip1 --release --features tracing
     - name: Release
-      uses: softprops/action-gh-release@v3
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
       if: startswith(github.ref, 'refs/tags/')
       with:
         files: target/wasm32-wasip1/release/zellij-project-switcher-plugin.wasm
