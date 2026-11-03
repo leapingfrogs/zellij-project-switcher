@@ -5,7 +5,7 @@
 use nu_ansi_term::{Color::Fixed, Style};
 use zellij_tile::prelude::*;
 
-use regex::{Regex, RegexBuilder};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -161,21 +161,7 @@ impl State {
     }
 
     pub fn update_filtered(&mut self) {
-        let regex_str = self
-            .search_term
-            .chars()
-            .enumerate()
-            .fold(String::new(), |acc, (i, c)| {
-                if i != 0 {
-                    format!("{acc}.*?{c}")
-                } else {
-                    format!("{acc}{c}")
-                }
-            });
-        let regex = RegexBuilder::new(&regex_str)
-            .case_insensitive(true)
-            .build()
-            .unwrap();
+        let regex = core::search_regex(&self.search_term);
         self.filtered_projects =
             self.projects
                 .keys()
