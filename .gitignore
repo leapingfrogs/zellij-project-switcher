@@ -1,6 +1,5 @@
 /target
 .idea
-.wasi-sdk
 
 # Devenv
 .devenv*

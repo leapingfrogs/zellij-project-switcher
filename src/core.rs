@@ -18,6 +18,10 @@ where
         String::from("^\\.git$"),
     ]);
 
+    // Everything after `--` is a search path, so a root can't be parsed as an
+    // fd option such as --exec.
+    cmd.push(String::from("--"));
+
     let default_root = &String::from("~");
     for root in config.get("roots").unwrap_or(default_root).split(':') {
         cmd.push(root.to_string());
@@ -25,6 +29,26 @@ where
 
     let cmd: Vec<&str> = cmd.iter().map(String::as_ref).collect();
     f(&cmd, options);
+}
+
+/// Case-insensitive matcher for names containing the characters of `term` in
+/// order. Each character is matched literally, so any typed input is safe.
+///
+/// # Panics
+///
+/// Only if the pattern exceeds the regex size limit, which takes a search term
+/// far longer than anyone will type.
+#[must_use]
+pub fn search_regex(term: &str) -> regex::Regex {
+    let pattern = term
+        .chars()
+        .map(|c| regex::escape(&c.to_string()))
+        .collect::<Vec<_>>()
+        .join(".*?");
+    RegexBuilder::new(&pattern)
+        .case_insensitive(true)
+        .build()
+        .expect("escaped search term is a valid regex")
 }
 
 #[derive(Debug, Default)]
@@ -91,7 +115,7 @@ impl CoreState {
     fn update_filtered_projects(&mut self) {
         let prior_selection = &self.selected_item();
 
-        let regex = self.build_search_regex();
+        let regex = search_regex(&self.search_term);
         self.filtered_projects = self
             .projects
             .keys()
@@ -115,24 +139,6 @@ impl CoreState {
         {
             self.selected_index = Some(position);
         }
-    }
-
-    fn build_search_regex(&mut self) -> regex::Regex {
-        let regex_str = self
-            .search_term
-            .chars()
-            .enumerate()
-            .fold(String::new(), |acc, (i, c)| {
-                if i != 0 {
-                    format!("{acc}.*?{c}")
-                } else {
-                    format!("{acc}{c}")
-                }
-            });
-        RegexBuilder::new(&regex_str)
-            .case_insensitive(true)
-            .build()
-            .unwrap()
     }
 }
 
@@ -179,7 +185,7 @@ mod test {
                 cmd.push((*item).to_string());
             }
         });
-        assert_eq!(cmd[4..], vec!["~"]);
+        assert_eq!(cmd[4..], vec!["--", "~"]);
     }
 
     #[test]
@@ -195,6 +201,38 @@ mod test {
                 cmd.push((*item).to_string());
             }
         });
-        assert_eq!(cmd[4..], vec!["~/personal_projects", "~/work_projects"]);
+        assert_eq!(
+            cmd[4..],
+            vec!["--", "~/personal_projects", "~/work_projects"]
+        );
+    }
+
+    #[test]
+    fn refresh_projects_keeps_option_like_roots_after_the_separator() {
+        let mut cmd: Vec<String> = Vec::new();
+
+        let config = BTreeMap::from([(String::from("roots"), String::from("--exec=evil"))]);
+        refresh_projects(&config, |c, _| {
+            for item in c {
+                cmd.push((*item).to_string());
+            }
+        });
+        assert_eq!(cmd[4..], vec!["--", "--exec=evil"]);
+    }
+
+    #[test]
+    fn search_regex_matches_characters_in_order_ignoring_case() {
+        let regex = search_regex("bt");
+        assert!(regex.is_match("BETA"));
+        assert!(!regex.is_match("tab"));
+    }
+
+    #[test]
+    fn search_regex_treats_metacharacters_literally() {
+        for term in ["(", "[", "*", "+", "?", "\\", "a(", "a|b", "."] {
+            assert!(search_regex(term).is_match(term), "term: {:?}", term);
+        }
+        assert!(!search_regex(".").is_match("alpha"));
+        assert!(!search_regex("a|b").is_match("beta"));
     }
 }
