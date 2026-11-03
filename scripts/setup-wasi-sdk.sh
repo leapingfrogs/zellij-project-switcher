@@ -4,7 +4,7 @@
 
 set -e
 
-WASI_SDK_VERSION="29"
+WASI_SDK_VERSION="34"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 INSTALL_DIR="$PROJECT_DIR/.wasi-sdk"
