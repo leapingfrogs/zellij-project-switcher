@@ -144,7 +144,7 @@ To release a new version:
 2. Commit both files and push to main. The release builds with `--locked`, so it fails if `Cargo.lock` is out of date
 3. Once CI passes on main, create and push a git tag matching the version. Only repository admins can create `v*` tags:
    ```bash
-   git tag v0.x.x
+   git tag -m "v0.x.x" v0.x.x
    git push origin v0.x.x
    ```
 4. The GitHub Action will automatically run the tests, build the wasm plugin, attest its build provenance and create a release with the artifact attached
